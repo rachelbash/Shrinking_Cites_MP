@@ -6,15 +6,19 @@ author: "Walker Grimshaw"
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+getwd()
 ```
 
 ## Import the data
 
 ```{r import}
-
+## import PA NPDES Violations Raw data
+NDPES_Violations_PA_Raw <- read.csv("../DATA/RAW/Water_Quality_ECHO_NPDES_EFF_VIOLATIONS_PA.csv",
+                                    header = T) 
 ```
 
-## Including Plots
+## Explore the data
 
 You can also embed plots, for example:
 
