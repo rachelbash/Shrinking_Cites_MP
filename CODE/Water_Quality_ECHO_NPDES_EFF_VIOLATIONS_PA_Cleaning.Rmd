@@ -20,10 +20,8 @@ NDPES_Violations_PA_Raw <- read.csv("../DATA/RAW/Water_Quality_ECHO_NPDES_EFF_VI
 
 ## Explore the data
 
-You can also embed plots, for example:
+```{r Explore}
 
-```{r pressure, echo=FALSE}
-plot(pressure)
 ```
 
 Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
