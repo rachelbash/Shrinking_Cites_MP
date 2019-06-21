@@ -20,7 +20,9 @@ NPDES_Violations_PA_Raw <-
 ## import system linkage file from processed data folder to link NPDES
 ## IDs with facility names and cities
 FRS_PROGRAM_LINKS_NPDES_PA <-
-  read.csv("../DATA/PROCESSED/FRS_PROGRAM_LINKS_PA.csv", header = T)
+  read.csv("../DATA/PROCESSED/FRS_PROGRAM_LINKS_NPDES_PA.csv", header = T)
+
+## merge the files by NPDES ID
 ```
 
 ## Explore the data
