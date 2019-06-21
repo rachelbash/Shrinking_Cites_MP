@@ -1,0 +1,13 @@
+README File for Water_Quality_ECHO_NPDES_EFF_VIOLATIONS_PA
+
+The file was downloaded from https://echo.epa.gov/tools/data-downloads/icis-npdes-data-set by selecting the state of Pennsylvania.
+
+The data were downloaded on April 22nd, 2019
+
+The data dictionary can be found at https://echo.epa.gov/tools/data-downloads/icis-npdes-download-summary
+
+# Facility Data
+
+Facility data downloaded from https://echo.epa.gov/tools/data-downloads#downloads
+
+Downloaded FRS_Facilities_And_Linkages

@@ -14,8 +14,13 @@ getwd()
 
 ```{r import}
 ## import PA NPDES Violations Raw data
-NDPES_Violations_PA_Raw <- read.csv("../DATA/RAW/Water_Quality_ECHO_NPDES_EFF_VIOLATIONS_PA.csv",
+NPDES_Violations_PA_Raw <-
+  read.csv("../DATA/RAW/Water_Quality_ECHO_NPDES_EFF_VIOLATIONS_PA.csv",
                                     header = T) 
+## import system linkage file from processed data folder to link NPDES
+## IDs with facility names and cities
+FRS_PROGRAM_LINKS_NPDES_PA <-
+  read.csv("../DATA/PROCESSED/FRS_PROGRAM_LINKS_PA.csv", header = T)
 ```
 
 ## Explore the data
