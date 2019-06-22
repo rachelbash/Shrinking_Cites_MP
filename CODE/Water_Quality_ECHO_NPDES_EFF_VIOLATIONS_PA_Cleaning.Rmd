@@ -44,6 +44,19 @@ As a first look, group by city and look at number of NPDES Violations.
 
 ```{r city violations}
 ## create NPDES dataframe with only pertinent information
+## dates
+NPDES_Violations_PA_Facilities$MONITORING_PERIOD_END_DATE <-
+  as.Date(NPDES_Violations_PA_Facilities$MONITORING_PERIOD_END_DATE,
+          format = "%m/%d/%Y")
+
+NPDES_Violations_PA_Facilities$VALUE_RECEIVED_DATE <-
+  as.Date(NPDES_Violations_PA_Facilities$VALUE_RECEIVED_DATE,
+          format = "%m/%d/%Y")
+
+NPDES_City <- NPDES_Violations_PA_Facilities %>%
+  filter(!is.na(CITY_NAME)) %>%
+  group_by(CITY_NAME) %>%
+  summarize(count = n())
 ```
 
 
