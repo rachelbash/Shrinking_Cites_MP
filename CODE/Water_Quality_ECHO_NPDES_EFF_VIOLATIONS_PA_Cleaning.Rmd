@@ -23,12 +23,36 @@ FRS_PROGRAM_LINKS_NPDES_PA <-
   read.csv("../DATA/PROCESSED/FRS_PROGRAM_LINKS_NPDES_PA.csv", header = T)
 
 ## merge the files by NPDES ID
+## in NPDES_Violations, the column is NPDES_ID
+## In FRS_PROGRAM_LINKS, the column is PGM_SYS_ID
+## First step is to create new column with PGM_SYS_ID data to match NPDES_ID
+FRS_PROGRAM_LINKS_NPDES_PA$NPDES_ID <- FRS_PROGRAM_LINKS_NPDES_PA$PGM_SYS_ID
+## now left join NPDES and FRS
+NPDES_Violations_PA_Facilities <- left_join(x = NPDES_Violations_PA_Raw,
+                                            y = FRS_PROGRAM_LINKS_NPDES_PA,
+                                            by = "NPDES_ID")
+## NOTE: NPDES_ID now a character vector
+
+## Check if we need FRS_FACILITIES data
+## No additional information
+
 ```
 
-## Explore the data
+## Violations by City
 
-```{r Explore}
+As a first look, group by city and look at number of NPDES Violations.
+
+```{r city violations}
+## create NPDES dataframe with only pertinent information
+```
+
+
+
+## Selecting Utilities
+
+Need to think of a way to select water utilities out of facilities maybe try filtering by PRIMARY_NAME contains "WWTP" or "TREATMENT PLANT" or "SEWER" or "WASTEWATER" or "AUTHORITY" or 
+
+```{r select utilities}
 
 ```
 
-Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
