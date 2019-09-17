@@ -1,0 +1,60 @@
+---
+title: "Violation_Enforcement Action"
+output:
+  html_document:
+    df_print: paged
+editor_options:
+  chunk_output_type: console
+---
+
+Loop through PWS ID. 
+
+Run the script LP sent. Then use the cws file to view the (just grab the Pennsylvania ones)
+
+Instead of state code, use % done
+Divide I by length of PWSID files
+If(i
+
+
+Subset cws by PWSID_STATE==”PA” and then loop through by PWSID to pull data together. 
+
+```{r, warning=FALSE, message=FALSE}
+#libraries
+library(jsonlite); library(tidyverse); library(lubridate)
+library(rvest); library(dplyr); library(purrr); library(stringr)
+
+getwd()
+```
+
+#Create df
+```{r}
+baseURL = 'https://data.epa.gov/efservice/VIOLATION/PWSID/'
+fileType = '/EXCEL'
+
+cws <- read.csv('./OUTPUT/PAcws.csv') #PAcws is the cws df from the water systems script
+PaPWSID <- cws$PWSID
+
+i=1
+projectsURL = paste0(baseURL,PaPWSID[i],fileType)
+df <- read.csv(url(projectsURL))
+
+#convert all columns into characters instead of factors
+df <- df %>% mutate_all(as.character)
+str(df)
+
+```
+
+#Loop to include all PWSIDs
+```{r}
+for (i in 2:length(PaPWSID)){
+  projectsURL = paste0(baseURL,PaPWSID[i],fileType)
+  foo <- read.csv(url(projectsURL))
+  foo <- foo %>% mutate_all(as.character)
+  
+  df <- rbind(df, foo)
+  print(PaPWSID[i])
+}
+#105436 observations
+```
+
+
