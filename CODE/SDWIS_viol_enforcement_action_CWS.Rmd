@@ -57,4 +57,8 @@ for (i in 2:length(PaPWSID)){
 #105436 observations
 ```
 
+#Save as file
+```{r}
+write.csv(df, './DATA/RAW/PAPWSID_SDWIS_Violation.csv')
+```
 
