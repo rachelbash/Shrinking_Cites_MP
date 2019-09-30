@@ -28,10 +28,12 @@ getwd()
 
 #Create df
 ```{r}
-baseURL = 'https://data.epa.gov/efservice/VIOLATION/PWSID/'
+#baseURL = 'https://data.epa.gov/efservice/VIOLATION_ENF_ASSOC/PWSID/'
+#baseURL = 'https://data.epa.gov/efservice/VIOLATION/PWSID/'
+baseURL = 'https://data.epa.gov/efservice/ENFORCEMENT_ACTION/PWSID/'
 fileType = '/EXCEL'
 
-cws <- read.csv('./OUTPUT/PAcws.csv') #PAcws is the cws df from the water systems script
+cws <- read.csv('./CODE/OUTPUT/PAcws.csv') #PAcws is the cws df from the water systems script
 PaPWSID <- cws$PWSID
 
 i=1
@@ -54,11 +56,15 @@ for (i in 2:length(PaPWSID)){
   df <- rbind(df, foo)
   print(PaPWSID[i])
 }
-#105436 observations
+#105436 observations for violation
+#346816 observations for viol_enf_assoc
+#54767 observations for enforcement_action
 ```
 
 #Save as file
 ```{r}
-write.csv(df, './DATA/RAW/PAPWSID_SDWIS_Violation.csv')
+#write.csv(df, './DATA/RAW/PAPWSID_SDWIS_Violation.csv')
+#write.csv(df, './DATA/RAW/PAPWSID_SDWIS_Violation_Enf_Assoc.csv')
+write.csv(df, './DATA/RAW/PAPWSID_SDWIS_Enforcement_Action.csv')
 ```
 
