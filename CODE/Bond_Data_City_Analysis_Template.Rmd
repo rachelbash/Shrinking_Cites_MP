@@ -1,0 +1,179 @@
+---
+title: "Scripts for Official Statements from Bond Documents"
+author: "Rachel Bash"
+date: "10/22/2019"
+output: pdf_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Johnstown
+
+####Setup
+
+```{r setup}
+# Load libraries
+library(trend); library(calibrate); library(lubridate); library(reshape2)
+library(rjson); library(dplyr); library(magrittr);  library(tidyr)
+library(sp); library(rgdal); library(maptools); library(gplots); library(rgeos); library(raster)
+library(stringr); library(PBSmapping); library(spData); library(sf)
+library(readxl); #in tidyverse
+library(tidyverse);
+
+rm(list=ls()) #removes anything stored in memory
+
+theme_set(theme_classic())
+```
+
+#### Loading City Excel sheet
+
+```{r}
+swd_osData <- "C:/Users/19524/Documents/DUKE/MP/Shrinking_Cities_MP/DATA/RAW/"
+fileName <- "os_PA4110034_Johnstown.xlsx"
+```
+
+####Basic Info Spreadsheet
+```{r}
+basicInfo <- read_excel(paste0(swd_osData, fileName), sheet="basicInfo")
+
+#plot bond value and start year
+plot(basicInfo$startYear, basicInfo$bondAmount, pch=19, col="navy", cex=1.8, xlab="Bond Year",
+     ylab="Bond Value (Millions)")
+#group by year and plot
+group.bonds <- basicInfo %>% group_by(OSYear) %>% 
+  summarize(TotalValue = sum(bondAmount, na.rm=TRUE)) %>% 
+  as.data.frame();
+#plot bond value and all years
+plot(group.bonds$OSYear, (group.bonds$TotalValue/1000000), pch=19, col="navy", cex=1.8, 
+     xlab="Bond Year", ylab="Bond Value (Millions)")
+
+all.years <- seq(min(basicInfo$OSYear), max(basicInfo$OSYear),1) %>% as.data.frame(); 
+colnames(all.years)=c("OSYear")
+all.years$TotalValue=0
+group.bonds <- rbind(all.years, group.bonds); 
+group.bonds <- group.bonds %>% 
+  group_by(OSYear) %>% 
+  summarize(TotalValue = sum(TotalValue, na.rm=TRUE)) %>% 
+  as.data.frame();
+
+#bar plot of total bond values for each bond year 
+par(mar=c(4,4,3,1))  #par(mar = c(bottom, left, top, right))
+barplot((group.bonds$TotalValue/1000000), names.arg=group.bonds$OSYear, main="Bonds with Official Statements", xlab="Bond Year", ylab="Total Bond Value ($Millions)", ylim=c(0,25))
+```
+
+####Otherdebt spreadsheet
+```{r}
+otherDebt <- read_excel(paste0(swd_osData, fileName), sheet="otherDebt"); head(otherDebt)
+
+uniqueDebt <- otherDebt %>% distinct(debtName, .keep_all = TRUE)  %>% as.data.frame() 
+  uniqueDebt <- uniqueDebt %>% dplyr::select(PWSID, debtName, type, amount, aveRate, startYear, endYear)
+  
+#plot type of debt and amount - combine bond series
+typeDebt <- uniqueDebt %>%
+  group_by(startYear, type) %>%
+  summarise(totalamount = sum(amount),
+            avgrate = mean(aveRate)
+            )
+
+ggplot(typeDebt, aes(x = startYear, y= totalamount/1000000, color = type, fill = type)) +
+  geom_bar(stat = "identity") +
+  labs(x="", y= "Total Bond Value ($ Millions)", color = "Type of Debt", fill = "Type of Debt")
+```
+
+
+####Usage
+
+```{r}
+usage <- read_excel(paste0(swd_osData, fileName), sheet="usage"); head(usage)
+
+# Percent of Treated and Metered Water to Supply Capacity
+capacity <- usage %>% filter(groupBy=="Capacity" & class=="Total") %>% group_by(year) %>% 
+  summarize(capVol_MGD = median(volume_MGD, na.rm=TRUE))
+treated <- usage %>% filter(groupBy=="Treated Water" & class=="Total") %>% group_by(year) %>% 
+  summarize(treatVol_MGD = median(volume_MGD, na.rm=TRUE))
+metered <- usage %>% filter(groupBy=="Metered Consumption") %>% group_by(year, class) %>% 
+  summarize(meterVol_MGD = median(volume_MGD, na.rm=TRUE))
+
+#combine total into one dataframe to get percent
+totalUse <- merge(capacity, treated, by.x="year", by.y="year", all=TRUE)
+totalUse <- merge(totalUse, subset(metered, class=="Total"), by.x="year", by.y="year", all=TRUE)
+totalUse$treatPer <- round(totalUse$treatVol_MGD/totalUse$capVol_MGD*100,2)
+totalUse$meterPer <- round(totalUse$meterVol_MGD/totalUse$capVol_MGD*100,2)
+
+
+#Plot capacity, treated, and metered over time
+par(mar=c(2,4,3,1))  #par(mar = c(bottom, left, top, right))
+plot(totalUse$year, totalUse$capVol_MGD, type="n", xlab="", ylab="Average Daily Volume (MGD)", main=paste0(usage$name[1]," Water Supply and Usage Over Time"), ylim=c(0,max(totalUse$capVol_MGD+2)))
+  lines(totalUse$year, totalUse$capVol_MGD, lwd=2, col="navy")
+  lines(totalUse$year, totalUse$treatVol_MGD, lwd=2, col="blue")
+  lines(totalUse$year, totalUse$meterVol_MGD, lwd=2, col="darkred")
+legend("topleft", c("Capacity","Treated Water","Metered Water"), 
+       col=c("navy","blue","darkred"), lwd=2)
+
+#plot metered and treated as percent of total capacity
+par(mar=c(2,4,3,1))  #par(mar = c(bottom, left, top, right))
+plot(totalUse$year, totalUse$treatPer, type="n", xlab="", ylab="Percent of Total Capacity", main=paste0(usage$name[1]," Water Supply and Usage Over Time"), ylim=c(0,100))
+  lines(totalUse$year, totalUse$treatPer, lwd=2, col="blue")
+  lines(totalUse$year, totalUse$meterPer, lwd=2, col="darkred")
+  abline(h = 100, col="navy", lwd=2)
+  abline(h = 80, col="red", lwd=3, lty=2)
+legend("bottomleft", c("Capacity","Treated Water","Metered Water", "Demand is 80% of Supply"),
+       col=c("navy","blue","darkred", "red"), lwd=2, lty=c(1,1,1,2))
+
+```
+
+####Unaccounted spreadsheet
+
+```{r}
+unaccount <- read_excel(paste0(swd_osData, fileName), sheet="unaccounted"); head(unaccount)
+#adjusted percent column may be a character if first values are NA
+unaccount$adjustedPercent <- as.numeric(as.character(unaccount$adjustedPercent))
+#summarize for duplicate years with different values
+unaccount <- unaccount %>% 
+  group_by(year, method) %>% 
+  summarize(GrossPer = median(grossPercent, na.rm=TRUE), 
+            AdjustedPer = median(adjustedPercent, na.rm=TRUE)) %>% 
+  as.data.frame()
+
+#add missing years so doesn't draw a line between
+all.years <- seq(min(unaccount$year), max(unaccount$year),1) %>% 
+  as.data.frame(); colnames(all.years)=c("year")
+  all.years$method = NA;       all.years$GrossPer=NA;           all.years$AdjustedPer=NA;
+all.years <- rbind(unaccount, all.years); 
+  
+#get rid of duplicate years
+unaccount2 <- all.years %>% 
+    group_by(year) %>% 
+    summarize(GrossPer = median(GrossPer, na.rm=TRUE), 
+              AdjustedPer = median(AdjustedPer, na.rm=TRUE)) %>% 
+    arrange(year)
+unaccount <- merge(unaccount2, unaccount[,c(1:2)], by.x="year", by.y="year", all.x=TRUE)
+
+#leak estimate 
+unaccount$leakEst = unaccount$GrossPer - unaccount$AdjustedPer
+
+unaccount$pch <- ifelse(unaccount$method=="Reported", 19, 1);    
+unaccount$pch <- ifelse(is.na(unaccount$method)==TRUE, NA, unaccount$pch);
+unaccount$col <- ifelse(unaccount$method=="Reported", "black", rgb(0.2,0.2,0.2));    
+unaccount$col <- ifelse(is.na(unaccount$method)==TRUE, NA, unaccount$col);
+
+#plotting
+par(mar=c(2,4,3,1))  #par(mar = c(bottom, left, top, right))
+plot(unaccount$year, unaccount$GrossPer, type="n", xlab="", ylab="Percent of Treated Water", 
+     main=paste0(usage$name[1]," Unaccounted Water Loss"), ylim=c(0,100), las=1) 
+#las sets all labels horizontal
+abline(h=c(10,20,30,40,50,60,70,80,90,100), lty=3, col="lightgray")
+  lines(unaccount$year, unaccount$GrossPer, lwd=2, col="black");    
+    points(unaccount$year, unaccount$GrossPer, pch=unaccount$pch, col=unaccount$col, cex=1.2)
+  lines(unaccount$year, unaccount$AdjustedPer, lwd=2, col="goldenrod4");
+  lines(unaccount$year, unaccount$leakEst, lwd=2, lty=2, col="red");    
+legend("topleft", c("Estimated Gross Unaccounted Water","Reported Gross Unaccounted Water","Adjusted Unaccounted Water (known)", "Estimated Leaks"), 
+       col=c("black","black","goldenrod4","red"), lwd=2, lty=c(1,1,1,2), pch=c(1,19,NA,NA), cex = 1.1)
+  
+
+```
+
