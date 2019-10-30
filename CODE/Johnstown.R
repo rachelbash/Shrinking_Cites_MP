@@ -170,22 +170,23 @@ barplot(t(as.matrix(connects[,c(2:6)])), names.arg=connects$Year, main=paste0(cu
 #-------------------------------------------------------------------------------------------------------------------------------------------------------#
 #read in fiscal data
 fiscal <- read_excel(paste0(swd_osData, fileName), sheet="fiscal"); head(fiscal)
-#fix first row issue
-names(fiscal) <- as.matrix(fiscal[1, ])
-fiscal <- fiscal[-1, ]
+#fix first row issue so that the column names are correct
+names(fiscal) <- as.matrix(fiscal[1, ]); fiscal <- fiscal[-1, ]
+
 #convert from character to numeric
 fiscal[,c(5:dim(fiscal)[2])] <- sapply(fiscal[c(5:dim(fiscal)[2])],as.numeric)
-revenues <- fiscal %>% filter(Category=="Revenues")
 
+#revenue
+revenues <- fiscal %>% filter(category=="Revenues")
 names.revenue = seq(1988,2017,1)
 #read in usage data and demand data
 par(mar=c(2,4,3,1))  #par(mar = c(bottom, left, top, right))
 #remove last row, which is the total
 #create a bar plot of revenues over time
-barplot((as.matrix(fiscal[c(1:dim(revenues)[1]-1),c(5:dim(revenues)[2])])/1000000), names.arg=names.revenue, main=paste0(fiscal$Name[1],": Operating Revenue Generated"),
+barplot((as.matrix(fiscal[c(1:dim(revenues)[1]-1),c(5:dim(revenues)[2])])/1000000), names.arg=names.revenue, main=paste0(fiscal$name[1],": Operating Revenue Generated"),
         col=c("navy","goldenrod4","darkred","lightblue","black","yellow","yellow2","seagreen3","plum2","azure4","olivedrab"), ylim=c(0,12), las=1, ylab="Revenues ($Millions)")
 abline(h=0, col="black")
-legend("topleft",head(unique(revenues$SubCategory),-1), fill=c("navy","goldenrod4","darkred","lightblue","black","yellow","yellow2","seagreen3","plum2","azure4","olivedrab"),
+legend("topleft",head(unique(revenues$subcategory),-1), fill=c("navy","goldenrod4","darkred","lightblue","black","yellow","yellow2","seagreen3","plum2","azure4","olivedrab"),
        cex=0.8, ncol=2)
 
 #-------------------------------------------------------------------------------------------------------------------------------------------------------#
@@ -391,20 +392,22 @@ rates <- read_excel(paste0(swd_osData, fileName), sheet="rates"); head(rates)
 rateYearSet <- unique(rates$yearSet)
 
 #Average Rate for someone with a 0.75 inch pipe that uses 5000 gallons a month
-hhrates <- subset(rates, Charges=="Consumption Charge" & supplySystem=="Pumping" | is.na(supplySystem)==TRUE) %>% as.data.frame();  
+hhrates <- subset(rates, charges=="Consumption Charge" & otherClass=="Pumping" | is.na(otherClass)==TRUE) %>% as.data.frame();  
 hhmeter <- subset(rates, class=="0.75")
 
 unique.year <- unique(hhrates$rateYear)
-hh.quarter <- as.data.frame(matrix(nrow=length(unique.year),ncol=5)); colnames(hh.quarter) <- c("PWSID","Name","Year","Flat","cost15k")
+hh.quarter <- as.data.frame(matrix(nrow=length(unique.year),ncol=5)); 
+colnames(hh.quarter) <- c("PWSID","Name","Year","Flat","cost15k")
 hh.quarter$PWSID <- as.character(rates$PWSID[1])
-hh.quarter$Name <- as.character(rates$Name[1])  
+hh.quarter$Name <- as.character(rates$name[1])  
 hh.quarter$Year <- unique.year
 
 for(i in 1:length(unique.year)){
   zt.flat <- subset(hhmeter, rateYear==unique.year[i])$cost[1]
   
   if(unique.year[i]<=1998){
-    zt.rates1 <- subset(hhrates, rateYear==unique.year[i] & class=="3000")$cost[1];       zt.rates2 <- subset(hhrates, rateYear==unique.year[i] & class=="6000")$cost[1];
+    zt.rates1 <- subset(hhrates, rateYear==unique.year[i] & class=="3000")$cost[1];       
+    zt.rates2 <- subset(hhrates, rateYear==unique.year[i] & class=="6000")$cost[1];
     zt.rates3 <- subset(hhrates, rateYear==unique.year[i] & class=="20000")$cost[1]; 
     
     zt.quarter = zt.flat + zt.rates1*3 + zt.rates2*3 + zt.rates3*(15-6)
@@ -427,7 +430,7 @@ hh.quarter$Monthly = round(hh.quarter$cost15k/3,2)
 
 #Plot Estimated monthly rates (note... I cannot duplicate their estimated values)
 plot(hh.quarter$Year, hh.quarter$Monthly, pch=19,col="darkgray", cex=1.5, ylim=c(0,50), ylab="Estimated Monthly Cost for 5kgal", 
-     xlab="", main=paste0(rates$Name[1],": Estimated Monthly Bill"))
+     xlab="", main=paste0(rates$name[1],": Estimated Monthly Bill"))
 lines(hh.quarter$Year, hh.quarter$Monthly, lwd=2, col="black")
 
 
