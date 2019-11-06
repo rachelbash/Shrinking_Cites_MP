@@ -606,11 +606,12 @@ boxplot(top10.all$perkGal~top10.all$Year, na.rm=TRUE,las=1, xaxs="i", yaxs="i", 
 
 top10.nozero <- subset(top10.all, perkGal >0 & Type != "Total")
 
-boxplot(top10.nozero$perkGal~top10.nozero$Type, na.rm=TRUE,las=1, 
+boxplot(top10.nozero$perkGal~top10.nozero$Type, na.rm=TRUE, 
         xaxs="i", yaxs="i", ylim=c(0,6), col=c(pal, pal2),
-        ylab="Cost Per Thousand Gallons", 
+        ylab="Cost Per Thousand Gallons", xlab= " ", 
         main=paste0(top10$Name[1],"\n Average Cost Per Thousand Gallons"),
         cex.axis=0.8)
+text(srt=45)
 legend("topleft",c("Academic", "Country Club","Dairy Plant","Hopsital","Housing Authority","Laundry","Manufacturing","Municipality","Rehab Center"), 
        fill=c(pal, pal2), cex=0.9, ncol=2)
 
