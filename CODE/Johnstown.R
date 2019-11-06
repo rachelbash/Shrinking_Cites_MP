@@ -201,80 +201,104 @@ rateYearSet <- unique(rates$yearSet)
 #Plot total number of connections with total revenue generated
 connects$Total = connects$Residential+connects$Industrial+connects$Commercial+connects$Public+connects$`Other Utilities`
   
-classRevenue <- revenues %>% filter(SubCategory=="Residential" | SubCategory=="Industrial" | SubCategory=="Commercial" | 
-                                        SubCategory=="Public Buildings / Public Authorities" | SubCategory=="Sales to other Water Authorities" |
-                                      SubCategory=="Total Operating Revenues")
+classRevenue <- revenues %>% filter(subcategory=="Residential" | subcategory=="Industrial" | subcategory=="Commercial" | 
+                                        subcategory=="Public Buildings / Public Authorities" | subcategory=="Sales to other Water Authorities" |
+                                      subcategory=="Total Operating Revenues")
 head(classRevenue)
-gathRev <- classRevenue %>% gather(Year, Revenue, y1988:y2017)
-gathRev$Year<- as.numeric(substr(gathRev$Year,2,5))
+gathRev <- classRevenue %>% gather(year, Revenue, y1988:y2017) 
+#puts years in columns and matches each variable within that year; super helpful
+gathRev$year<- as.numeric(substr(gathRev$year,2,5))
 gathRev$Millions <- gathRev$Revenue/1000000
 
 #subset categories
-totRev <- subset(gathRev, SubCategory=="Total Operating Revenues")
-resRev <- subset(gathRev, SubCategory=="Residential");                        indRev <- subset(gathRev, SubCategory=="Industrial");
-comRev <- subset(gathRev, SubCategory=="Commercial");                         pubRev <- subset(gathRev, SubCategory=="Public Buildings / Public Authorities");
-utilRev <- subset(gathRev, SubCategory=="Sales to other Water Authorities");
+totRev <- subset(gathRev, subcategory=="Total Operating Revenues")
+resRev <- subset(gathRev, subcategory=="Residential");                        
+indRev <- subset(gathRev, subcategory=="Industrial");
+comRev <- subset(gathRev, subcategory=="Commercial");                         
+pubRev <- subset(gathRev, subcategory=="Public Buildings / Public Authorities");
+utilRev <- subset(gathRev, subcategory=="Sales to other Water Authorities");
 
 #plot customers over time
 par(mar=c(2,5,3,4))  #par(mar = c(bottom, left, top, right))
-plot(connects$Year, connects$Total, type="n", xlab="", ylab="", ylim=c(0,max(connects$Total)+1000), xlim=c(min(totRev$Year, connects$Year), 2020), xaxs="i", yaxs="i",
-     main=paste0(usage$Name[1]," Total Connections & Revenue"), las=1) #las sets all labels horizontal
+plot(connects$year, connects$Total, type="n", xlab="", ylab="", 
+     ylim=c(0,max(connects$Total)+1000), xlim=c(min(totRev$year, connects$year), 2020), 
+     xaxs="i", yaxs="i",
+     main=paste0(gathRev$name[1]," Total Connections & Revenue"), las=1) #las sets all labels horizontal
   mtext("Number of Connections", side=2, line=3.8)
-  lines(connects$Year, connects$Total, lwd=2, col="black");    
+  lines(connects$year, connects$Total, lwd=2, col="black");    
 
 par(new=TRUE)
-plot(totRev$Year, totRev$Millions, type="n", axes=F, ylab="", xlab="", xlim=c(min(totRev$Year, connects$Year), 2020), xaxs="i", yaxs="i",
+plot(totRev$year, totRev$Millions, type="n", axes=F, ylab="", xlab="", 
+     xlim=c(min(totRev$year, connects$year), 2020), xaxs="i", yaxs="i",
      ylim=c(0,max(totRev$Millions, na.rm=TRUE)+2)) #las sets all labels horizontal
-  lines(totRev$Year, totRev$Millions, lwd=2, col="olivedrab4")
-  abline(v=rateYearSet, col="darkgray", lty=3)  
-  mtext("Total Operating Revenue ($Millions)", side=4, col="olivedrab4", line=2.5)
-  axis(side = 4, col="olivedrab4", las=2, col.axis="olivedrab4")
-legend("bottomright", c("Number of Connections","Operating Revenues","Year of Known Rate Change"), col=c("black","olivedrab4","darkgray"), lwd=c(2,2,1), lty=c(1,1,3))
+  lines(totRev$year, totRev$Millions, lwd=2, col=pal[1])
+  abline(v=rates$yearSet, col="darkgray", lty=3)  
+  mtext("Total Operating Revenue ($Millions)", side=4, col=pal[1], line=2.5)
+  axis(side = 4, col=pal[1], las=2, col.axis=pal[1])
+legend("bottomright", c("Number of Connections","Operating Revenues",
+                        "Year of Known Rate Change"), 
+       col=c("black",pal[1],"darkgray"), lwd=c(2,2,1), lty=c(1,1,3))
 
 
 #-------------------------------------------------------------------------------------------------------------------------------------------------------#
 #Plot Ave Dollar Per Connection
-revCon.total <- merge(connects[,c("Year","Total")], totRev[,c("Year","Revenue")], by.x="Year", by.y="Year", all=TRUE)
+revCon.total <- merge(connects[,c("year","Total")], totRev[,c("year","Revenue")], 
+                      by.x="year", by.y="year", all=TRUE)
   revCon.total$PerConnect = revCon.total$Revenue/revCon.total$Total
 
-revCon.res <- merge(connects[,c("Year","Residential")], resRev[,c("Year","Revenue")], by.x="Year", by.y="Year", all=TRUE)
+revCon.res <- merge(connects[,c("year","Residential")], resRev[,c("year","Revenue")], 
+                    by.x="year", by.y="year", all=TRUE)
   revCon.res$PerConnect = revCon.res$Revenue/revCon.res$Residential
 
-revCon.ind <- merge(connects[,c("Year","Industrial")], indRev[,c("Year","Revenue")], by.x="Year", by.y="Year", all=TRUE)
+revCon.ind <- merge(connects[,c("year","Industrial")], indRev[,c("year","Revenue")], 
+                    by.x="year", by.y="year", all=TRUE)
   revCon.ind$PerConnect = revCon.ind$Revenue/revCon.ind$Industrial
   
-revCon.com <- merge(connects[,c("Year","Commercial")], comRev[,c("Year","Revenue")], by.x="Year", by.y="Year", all=TRUE)
+revCon.com <- merge(connects[,c("year","Commercial")], comRev[,c("year","Revenue")], 
+                    by.x="year", by.y="year", all=TRUE)
   revCon.com$PerConnect = revCon.com$Revenue/revCon.com$Commercial
 
-revCon.pub <- merge(connects[,c("Year","Public")], pubRev[,c("Year","Revenue")], by.x="Year", by.y="Year", all=TRUE)
+revCon.pub <- merge(connects[,c("year","Public")], pubRev[,c("year","Revenue")], 
+                    by.x="year", by.y="year", all=TRUE)
   revCon.pub$PerConnect = revCon.pub$Revenue/revCon.pub$Public
   
-revCon.util <- merge(connects[,c("Year","Other Utilities")], utilRev[,c("Year","Revenue")], by.x="Year", by.y="Year", all=TRUE)
+revCon.util <- merge(connects[,c("year","Other Utilities")], utilRev[,c("year","Revenue")], 
+                     by.x="year", by.y="year", all=TRUE)
   revCon.util$PerConnect = revCon.util$Revenue/revCon.util$'Other Utilities'
   
     
 #plot per connection costs over time
 par(mar=c(2,5,3,1))  #par(mar = c(bottom, left, top, right))
-plot(revCon.total$Year, revCon.total$PerConnect, type="n", xlab="", ylab="Revenue per Connection ($)", ylim=c(0,max(revCon.ind$PerConnect, na.rm=TRUE)), 
-     xlim=c(min(revCon.total$Year), 2020), xaxs="i", yaxs="i",
-       main=paste0(usage$Name[1]," Average Annual Cost Per Connection"), las=1) #las sets all labels horizontal
-    lines(revCon.total$Year, revCon.total$PerConnect, lwd=4, col="black");        points(revCon.total$Year, revCon.total$PerConnect, pch=19, col="black");
-    lines(revCon.res$Year, revCon.res$PerConnect, lwd=2, col="navy");             points(revCon.res$Year, revCon.res$PerConnect, pch=19, col="navy");
-    lines(revCon.com$Year, revCon.com$PerConnect, lwd=2, col="goldenrod4");       points(revCon.com$Year, revCon.com$PerConnect, pch=19, col="goldenrod4");
-    #par(new=TRUE)
-    #plot(revCon.total$Year, revCon.total$PerConnect, type="n", axes=F, ylab="", xlab="", xlim=c(min(revCon.total$Year), 2020), xaxs="i", yaxs="i", ylim=c(0,7000)) #las sets all labels horizontal
-    lines(revCon.ind$Year, revCon.ind$PerConnect, lwd=2, col="darkred");          points(revCon.ind$Year, revCon.ind$PerConnect, pch=19, col="darkred");
-    lines(revCon.pub$Year, revCon.pub$PerConnect, lwd=2, col="lightblue");        points(revCon.pub$Year, revCon.pub$PerConnect, pch=19, col="lightblue");    
+plot(revCon.total$year, revCon.total$PerConnect, type="n", xlab="", 
+     ylab="Revenue per Connection ($)", ylim=c(0,max(revCon.ind$PerConnect, na.rm=TRUE)), 
+     xlim=c(min(revCon.total$year), 2020), xaxs="i", yaxs="i",
+     main=paste0(totRev$name[1]," Average Annual Cost Per Connection"), 
+     las=1) #las sets all labels horizontal
+      lines(revCon.total$year, revCon.total$PerConnect, lwd=4, col="black");        
+      points(revCon.total$year, revCon.total$PerConnect, pch=19, col="black");
+      lines(revCon.res$year, revCon.res$PerConnect, lwd=2, col=pal[1]);             
+      points(revCon.res$year, revCon.res$PerConnect, pch=19, col=pal[1]);
+      lines(revCon.com$year, revCon.com$PerConnect, lwd=2, col=pal[5]);       
+      points(revCon.com$year, revCon.com$PerConnect, pch=19, col=pal[5]);
+#par(new=TRUE)
+#plot(revCon.total$year, revCon.total$PerConnect, type="n", axes=F, ylab="", 
+ #     xlab="", xlim=c(min(revCon.total$year), 2020), xaxs="i", yaxs="i", 
+  #    ylim=c(0,7000)) #las sets all labels horizontal
+    lines(revCon.ind$year, revCon.ind$PerConnect, lwd=2, col=pal[3]);         
+    points(revCon.ind$year, revCon.ind$PerConnect, pch=19, col=pal[3]);
+    lines(revCon.pub$year, revCon.pub$PerConnect, lwd=2, col=pal[4]);        
+    points(revCon.pub$year, revCon.pub$PerConnect, pch=19, col=pal[4]);    
     abline(v=rateYearSet, col="darkgray", lty=3)  
-#   mtext("Ave Annual Cost for Industrial & Public Classes", side=4, line=3.5)
-#    axis(side = 4,  las=2)
-legend("topleft",,c("Residential", "Industrial","Commercial","Public","Total"), col=c("navy","darkred","goldenrod4","lightblue","black"), lwd=c(2,2,2,2,4),
+ #mtext("Ave Annual Cost for Industrial & Public Classes", side=4, line=3.5)
+  #axis(side = 4,  las=2)
+legend("topleft",,c("Industrial", "Commercial","Residential","Public","Total"), 
+       col=c(pal[3],pal[5],pal[1],pal[4],"black"), lwd=c(2,2,2,2,4),
        cex=0.8, ncol=2)
 
 
 #plot change in revenue by class over time
 par(mar=c(2,5,3,1))  #par(mar = c(bottom, left, top, right))
-plot(revCon.total$Year, revCon.total$Revenue/1000000, type="n", xlab="", ylab="Revenue ($Millions)", ylim=c(0,7), xlim=c(min(revCon.total$Year), 2020), xaxs="i", yaxs="i",
+plot(revCon.total$year, revCon.total$Revenue/1000000, type="n", xlab="", ylab="Revenue ($Millions)", ylim=c(0,7), xlim=c(min(revCon.total$Year), 2020), xaxs="i", yaxs="i",
      main=paste0(usage$Name[1]," Revenue by Customer Class"), las=1) #las sets all labels horizontal
   #lines(revCon.total$Year, revCon.total$Revenue/1000000, lwd=4, col="black");
   lines(revCon.res$Year, revCon.res$Revenue/1000000, lwd=2, col="navy");
@@ -292,35 +316,57 @@ plot(revCon.total$Year, revCon.total$Revenue/1000000, type="n", xlab="", ylab="R
 # Percent of Water and Revenue from Top 10 Customrs and Diversity of Customer Class
 #################################################################################################################################################
 #read in data
-top10 <- read_excel(paste0(swd_osData, fileName), sheet="largestCust"); head(top10)
+top10 <- read_excel(paste0(swd_osData, fileName), sheet="largestCust"); #head(top10)
 #convert to numeric
-top10[,c("Gallons","Revenue","percentTotalGal","percentTotalRev")] <- sapply(top10[,c("Gallons","Revenue","percentTotalGal","percentTotalRev")],as.numeric)  
+top10[,c("Gallons","Revenue","percentTotalGal","percentTotalRev")] <- 
+    sapply(top10[,c("Gallons","Revenue","percentTotalGal","percentTotalRev")],as.numeric)  
 
-top10.type <- top10 %>% group_by(Year, Type) %>% summarize(nType=n(), sumPerGal = sum(percentTotalGal, na.rm=TRUE), sumPerRev = sum(percentTotalRev, na.rm=TRUE)) %>% as.data.frame()
+top10.type <- top10 %>% 
+  group_by(Year, Type) %>% 
+  summarize(nType=n(), sumPerGal = sum(percentTotalGal, na.rm=TRUE), 
+            sumPerRev = sum(percentTotalRev, na.rm=TRUE)) %>% as.data.frame()
+#groups by type of customer (e.g. Manufacturing, Dairy, Housing Authority, etc.)
 #add missing years so doesn't draw a line between
-all.years <- seq(min(top10$Year, na.rm=TRUE), max(top10$Year, na.rm=TRUE),1) %>% as.data.frame(); colnames(all.years)=c("Year")
-  all.years$Type = "Total";       all.years$nType=NA;           all.years$sumPerGal=NA;    all.years$sumPerRev=NA;
+all.years <- seq(min(top10$Year, na.rm=TRUE), max(top10$Year, na.rm=TRUE),1) %>% 
+  as.data.frame(); colnames(all.years)=c("Year")
+#create data frame columns
+  all.years$Type = "Total";       
+  all.years$nType=NA;           
+  all.years$sumPerGal=NA;    
+  all.years$sumPerRev=NA;
 
 top10.tot <- top10.type %>% filter(Type=="Total") %>% as.data.frame()
+  #top 10 put together shows percent of total revenue each year
 top10.tot <- rbind(top10.tot, all.years)
-top10.tot <- top10.tot %>% group_by(Year, Type) %>% summarize(nType=median(nType, na.rm=TRUE), sumPerGal = median(sumPerGal, na.rm=TRUE), sumPerRev = median(sumPerRev, na.rm=TRUE))
+top10.tot <- top10.tot %>% 
+  group_by(Year, Type) %>% 
+  summarize(nType=median(nType, na.rm=TRUE), sumPerGal = median(sumPerGal, na.rm=TRUE), 
+            sumPerRev = median(sumPerRev, na.rm=TRUE))
 top10.tot$sumPerGal <- ifelse(top10.tot$sumPerGal==0,NA,top10.tot$sumPerGal)
 
 #plot total over time
 par(mar=c(2,5,3,1))  #par(mar = c(bottom, left, top, right))
-plot(top10.tot$Year, top10.tot$sumPerGal, type="n", xlab="", ylab="Percent of Total Revenue or Treated Water", ylim=c(0,50), xlim=c(min(top10.tot$Year), 2020), xaxs="i", yaxs="i",
-     main=paste0(usage$Name[1]," Top 10 Customers Each Year"), las=1) #las sets all labels horizontal
-  lines(top10.tot$Year, top10.tot$sumPerGal, lwd=2, col="blue");          points(top10.tot$Year, top10.tot$sumPerGal, pch=19, cex=1.2, col="blue")
-  lines(top10.tot$Year, top10.tot$sumPerRev, lwd=2, col="olivedrab4");    points(top10.tot$Year, top10.tot$sumPerRev, pch=19, cex=1.2, col="olivedrab4")
-legend("topright",c("Treated Water Usage","Revenue"), col=c("blue","olivedrab4"), pch=19, cex=1.2)
+plot(top10.tot$Year, top10.tot$sumPerGal, type="n", xlab="", 
+     ylab="Percent of Total Revenue or Treated Water", ylim=c(0,50), 
+     xlim=c(min(top10.tot$Year), 2020), xaxs="i", yaxs="i",
+     main=paste0(top10$Name[1]," Top 10 Customers Each Year"), las=1) 
+  lines(top10.tot$Year, top10.tot$sumPerGal, lwd=2, col=pal[1]);          
+  points(top10.tot$Year, top10.tot$sumPerGal, pch=19, cex=1.2, col=pal[1])
+  lines(top10.tot$Year, top10.tot$sumPerRev, lwd=2, col=pal[2]);    
+  points(top10.tot$Year, top10.tot$sumPerRev, pch=19, cex=1.2, col=pal[2])
+legend("topright",c("Treated Water Usage","Revenue"), 
+       col=c(pal[1],pal[2]), pch=19, cex=1.2)
 
 
 top10.type <- top10.type %>% filter(Type != "Total" & Year>1960)
   
-top10.gal <- top10.type %>% dplyr::select(Year,Type,sumPerRev) %>% spread(Type, sumPerRev)
+top10.gal <- top10.type %>% 
+  dplyr::select(Year,Type,sumPerRev) %>% 
+  spread(Type, sumPerRev) #spreads data so you can see the total customer type revenue per year
 top10.gal[is.na(top10.gal)] <- 0
-all.years <- seq(min(top10$Year), max(top10$Year),1) %>% as.data.frame(); colnames(all.years)=c("Year")
-  all.years[c(2:dim(top10.gal)[2])]<-0;
+all.years <- seq(min(top10$Year), max(top10$Year),1) %>% as.data.frame(); 
+colnames(all.years)=c("Year")
+all.years[c(2:dim(top10.gal)[2])]<-0;
   #keep only those years missing
     all.years <-all.years[!(all.years$Year %in% unique(top10.gal$Year)),]
     colnames(all.years) <- names(top10.gal)
@@ -330,23 +376,35 @@ top10.gal <- top10.gal %>% arrange(Year)
 
 #plot customers over time
 par(mar=c(2,5,3,1))  #par(mar = c(bottom, left, top, right))
-barplot(t(as.matrix(top10.gal[,-1])), names.arg=top10.gal$Year, main=paste0(top10$Name[1],": Main Users by Type"), ylim=c(0,16), las=1, ylab="Percent of Revenue",
-        col=c("navy","darkgreen","brown","red","darkred","goldenrod1", "darkgray","lightblue","salmon"))
+barplot(t(as.matrix(top10.gal[,-1])), names.arg=top10.gal$Year, 
+        main=paste0(top10$Name[1],": Main Users by Type"), ylim=c(0,16), las=1, 
+        ylab="Percent of Revenue",
+        col=c(pal,pal2))
 abline(h=0, col="black")
-legend("topright",c("Academic", "Country Club","Dairy Plant","Hopsital","Housing Authority","Laundry","Manufacturing","Municipality","Rehab Center"), 
-       fill=c("navy","darkgreen","brown","red","darkred","goldenrod1", "darkgray","lightblue","salmon"), cex=0.9, ncol=2)
+legend("topright",c("Academic", "Country Club","Dairy Plant","Hopsital",
+                    "Housing Authority","Laundry","Manufacturing","Municipality",
+                    "Rehab Center"), 
+       fill=c(pal,pal2), cex=0.9, ncol=2)
 
 #Contribution from first rank
-top1 <- top10 %>% group_by(Year) %>% filter(Revenue == max(Revenue, na.rm=TRUE)) %>% as.data.frame()
-all.years <- seq(min(top10$Year, na.rm=TRUE), max(top10$Year, na.rm=TRUE),1) %>% as.data.frame(); colnames(all.years)=c("Year")
-all.years <-all.years[!(all.years$Year %in% unique(top10$Year)),] %>% as.data.frame(); colnames(all.years)=c("Year")
+top1 <- top10 %>% group_by(Year) %>% 
+  filter(Revenue == max(Revenue, na.rm=TRUE)) %>% as.data.frame()
+#if there is a total row, this will grab just the total revenue from the top10
+all.years <- seq(min(top10$Year, na.rm=TRUE), 
+                 max(top10$Year, na.rm=TRUE),1) %>% as.data.frame(); 
+colnames(all.years)=c("Year")
+all.years <-all.years[!(all.years$Year %in% unique(top10$Year)),] %>% 
+  as.data.frame(); colnames(all.years)=c("Year")
 all.years[c(2:dim(top10)[2])]<-NA;  
-all.years <- all.years[,c("V7","V2","V3","V4","V5","V6","Year","V8","V9","V10","V11","V12","V13","V14")]
+all.years <- all.years[,c("V7","V2","V3","V4","V5","V6","Year",
+                          "V8","V9","V10","V11","V12","V13","V14")]
 colnames(all.years) <- names(top10)
 
 top1 <- rbind(top1, all.years) %>% arrange(Year)
-plot(top1$Year, top1$percentTotalRev, pch=19,col="darkgray", cex=1.5, ylim=c(0,50), ylab="Contribution from Largest Revenue Source (%)", xlab="", main=paste0(top10$Name[1],": Largest Revenue Customer"))
-lines(top1$Year, top1$percentTotalRev, lwd=3, col="black")
+plot(top1$Year, top1$percentTotalRev, pch=19,col=pal[2], 
+     cex=1.5, ylim=c(0,50), ylab="Contribution from Largest Revenue Source (%)", 
+     xlab="", main=paste0(top10$Name[1],": Largest Revenue Customer"))
+lines(top1$Year, top1$percentTotalRev, lwd=3, col=pal[2])
 
 
 #Range of prices paid
