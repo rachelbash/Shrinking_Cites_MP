@@ -1,0 +1,636 @@
+---
+title: "Greater Johnstown Water Authority"
+author: "Rachel Bash"
+output: pdf_document
+editor_options: 
+  chunk_output_type: console
+geometry: margin=1in
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, warning=FALSE, message=FALSE, fig.height = 4.5, fig.width=6)
+
+# Load libraries
+library(trend); library(calibrate); library(lubridate); library(reshape2)
+library(rjson); library(dplyr); library(magrittr);  library(tidyr)
+library(sp); library(rgdal); library(maptools); library(gplots); library(rgeos); library(raster)
+library(stringr); library(PBSmapping); library(spData); library(sf); library(nationalparkcolors)
+library(readxl); library(cowplot) #in tidyverse
+library(tidyverse);
+
+#pacman::p_load(trend, calibrate, lubridate, reshape2, jrson, dplyr, magrittr, tidyr, sp, rgdal, maptools, gplots, rgeos, raster, stringr, PBSmapping, spData, sf, nationalparkcolors, readxl, tidyverse)
+
+rm(list=ls()) #removes anything stored in memory
+
+#colors and theme
+pal <- park_palette("SmokyMountains")
+pal2 <- park_palette("Arches")
+theme_set(theme_classic())
+#devtools::install_github("katiejolly/nationalparkcolors")
+```
+
+
+
+```{r, echo=FALSE}
+#### Loading City Excel sheet
+
+# Greater Johnstown Water Authority
+swd_osData <- "C:/Users/19524/Documents/DUKE/MP/Shrinking_Cities_MP/DATA/RAW/"
+fileName <- "os_PA4110034_Johnstown.xlsx"
+```
+
+```{r, fig.cap="Points show how many total bonds were issued and when over the given time range", echo=FALSE}
+
+
+#### Basic Info Spreadsheet
+
+
+basicInfo <- read_excel(paste0(swd_osData, fileName), sheet="basicInfo")
+
+#plot bond value and start year
+plot(basicInfo$startYear, basicInfo$bondAmount, pch=19, col=pal[4], 
+                 cex=1.8, xlab="Bond Year",ylab="Bond Value (Millions)",
+     main=paste0(basicInfo$name[1],"\n Bonds Issued"))
+#group by year and plot
+group.bonds <- basicInfo %>% group_by(OSYear) %>% 
+  summarize(TotalValue = sum(bondAmount, na.rm=TRUE)) %>% 
+  as.data.frame();
+#plot bond value and all years
+#plot(group.bonds$OSYear, (group.bonds$TotalValue/1000000), pch=19, col="navy", cex=1.8, 
+     #xlab="Bond Year", ylab="Bond Value (Millions)")
+
+all.years <- seq(min(basicInfo$OSYear), max(basicInfo$OSYear),1) %>% as.data.frame(); 
+colnames(all.years)=c("OSYear")
+all.years$TotalValue=0
+group.bonds <- rbind(all.years, group.bonds); 
+group.bonds <- group.bonds %>% 
+  group_by(OSYear) %>% 
+  summarize(TotalValue = sum(TotalValue, na.rm=TRUE)) %>% 
+  as.data.frame();
+```
+
+
+
+
+```{r, fig.cap="Bars show the total amount of money issued in bonds for each year", echo=FALSE}
+
+#bar plot of total bond values for each bond year 
+par(mar=c(4,4,3,1))  #par(mar = c(bottom, left, top, right))
+barplot((group.bonds$TotalValue/1000000), names.arg=group.bonds$OSYear, main=paste0(basicInfo$name[1],"\n Total Value of Bonds Issued"), xlab="Bond Year", ylab="Total Bond Value ($Millions)", ylim=c(0,25), col=pal[2])
+
+
+```
+
+
+
+
+
+```{r, fig.cap="Type of bond and its total amount are plotted over time", echo=FALSE}
+#### Other Debt spreadsheet
+
+otherDebt <- read_excel(paste0(swd_osData, fileName), sheet="otherDebt"); 
+#head(otherDebt)
+
+uniqueDebt <- otherDebt %>% distinct(debtName, .keep_all = TRUE)  %>% as.data.frame() 
+  uniqueDebt <- uniqueDebt %>% dplyr::select(PWSID, debtName, type, amount, aveRate, startYear, endYear)
+  
+#plot type of debt and amount - combine bond series
+typeDebt <- uniqueDebt %>%
+  group_by(startYear, type) %>%
+  summarise(totalamount = sum(amount),
+            avgrate = mean(aveRate)
+            )
+
+ggplot(typeDebt, aes(x = startYear, y= totalamount/1000000, color = type, fill = type)) +
+  geom_bar(stat = "identity") +
+  labs(x="", y= "Total Bond Value ($ Millions)", color = "Type of Debt", fill = "Type of Debt",
+       title=paste0(otherDebt$name[1],"\n Other Debt Over Time")) +
+  scale_color_manual(values=c(pal[1], pal[3], pal[4])) +
+  scale_fill_manual(values=c(pal[1], pal[3], pal[4]))
+```
+
+
+
+
+
+```{r, fig.cap="The change in capacity, treated water, and metered water over time as the average daily volume.", echo=FALSE}
+
+####Usage spreadsheet
+
+usage <- read_excel(paste0(swd_osData, fileName), sheet="usage"); 
+#head(usage)
+
+# Percent of Treated and Metered Water to Supply Capacity
+capacity <- usage %>% filter(groupBy=="Capacity" & class=="Total") %>% group_by(year) %>% 
+  summarize(capVol_MGD = median(volume_MGD, na.rm=TRUE))
+treated <- usage %>% filter(groupBy=="Treated Water" & class=="Total") %>% group_by(year) %>% 
+  summarize(treatVol_MGD = median(volume_MGD, na.rm=TRUE))
+metered <- usage %>% filter(groupBy=="Metered Consumption") %>% group_by(year, class) %>% 
+  summarize(meterVol_MGD = median(volume_MGD, na.rm=TRUE))
+
+#combine total into one dataframe to get percent
+totalUse <- merge(capacity, treated, by.x="year", by.y="year", all=TRUE)
+totalUse <- merge(totalUse, subset(metered, class=="Total"), by.x="year", by.y="year", all=TRUE)
+totalUse$treatPer <- round(totalUse$treatVol_MGD/totalUse$capVol_MGD*100,2)
+totalUse$meterPer <- round(totalUse$meterVol_MGD/totalUse$capVol_MGD*100,2)
+
+
+#Plot capacity, treated, and metered over time
+par(mar=c(2,4,3,1))  #par(mar = c(bottom, left, top, right))
+plot(totalUse$year, totalUse$capVol_MGD, type="n", xlab="", ylab="Average Daily Volume (MGD)", main=paste0(usage$name[1],"\n Water Supply and Usage Over Time"), ylim=c(0,max(totalUse$capVol_MGD+2)))
+  lines(totalUse$year, totalUse$capVol_MGD, lwd=2, col="black")
+  lines(totalUse$year, totalUse$treatVol_MGD, lwd=2, col=pal[1])
+  lines(totalUse$year, totalUse$meterVol_MGD, lwd=2, col=pal[2])
+legend("topleft", c("Capacity","Treated Water","Metered Water"), 
+       col=c("black", pal[1], pal[2]), lwd=2)
+
+```
+
+
+```{r, fig.cap="The capacity value is treated as the total and the treated and metered water as % of total capacity, with an indication of the 80% of demand mark. This graph and the one above are just two ways to show the same data.", echo=FALSE}
+#plot metered and treated as percent of total capacity
+par(mar=c(2,4,3,1))  #par(mar = c(bottom, left, top, right))
+plot(totalUse$year, totalUse$treatPer, type="n", xlab="", ylab="Percent of Total Capacity", main=paste0(usage$name[1],"\n Water Supply and Usage Over Time"), ylim=c(0,100))
+  lines(totalUse$year, totalUse$treatPer, lwd=2, col=pal[1])
+  lines(totalUse$year, totalUse$meterPer, lwd=2, col=pal[2])
+  abline(h = 100, col="black", lwd=2)
+  abline(h = 80, col=pal[3], lwd=3, lty=2)
+legend("bottomleft", c("Capacity","Treated Water","Metered Water", "Demand is 80% of Supply"),
+       col=c("black",pal[1],pal[2], pal[3]), lwd=2, lty=c(1,1,1,2))
+
+```
+
+
+
+
+```{r, fig.cap="The total unaccounted for water compared to the known accounted for water over time. Estimated leaks are calculated by subtracting the adjusted number from the gross total.", echo= FALSE}
+
+#### Unaccounted spreadsheet
+
+unaccount <- read_excel(paste0(swd_osData, fileName), sheet="unaccounted"); 
+#head(unaccount)
+#adjusted percent column may be a character if first values are NA
+unaccount$adjustedPercent <- as.numeric(as.character(unaccount$adjustedPercent))
+#summarize for duplicate years with different values
+unaccount <- unaccount %>% 
+  group_by(year, method) %>% 
+  summarize(GrossPer = median(grossPercent, na.rm=TRUE), 
+            AdjustedPer = median(adjustedPercent, na.rm=TRUE)) %>% 
+  as.data.frame()
+
+#add missing years so doesn't draw a line between
+all.years <- seq(min(unaccount$year), max(unaccount$year),1) %>% 
+  as.data.frame(); colnames(all.years)=c("year")
+  all.years$method = NA;       all.years$GrossPer=NA;           all.years$AdjustedPer=NA;
+all.years <- rbind(unaccount, all.years); 
+  
+#get rid of duplicate years
+unaccount2 <- all.years %>% 
+    group_by(year) %>% 
+    summarize(GrossPer = median(GrossPer, na.rm=TRUE), 
+              AdjustedPer = median(AdjustedPer, na.rm=TRUE)) %>% 
+    arrange(year)
+unaccount <- merge(unaccount2, unaccount[,c(1:2)], by.x="year", by.y="year", all.x=TRUE)
+
+#leak estimate 
+unaccount$leakEst = unaccount$GrossPer - unaccount$AdjustedPer
+
+unaccount$pch <- ifelse(unaccount$method=="Reported", 19, 1);    
+unaccount$pch <- ifelse(is.na(unaccount$method)==TRUE, NA, unaccount$pch);
+unaccount$col <- ifelse(unaccount$method=="Reported", "black", rgb(0.2,0.2,0.2));    
+unaccount$col <- ifelse(is.na(unaccount$method)==TRUE, NA, unaccount$col);
+
+#plotting
+par(mar=c(2,4,3,1))  #par(mar = c(bottom, left, top, right))
+plot(unaccount$year, unaccount$GrossPer, type="n", xlab="", ylab="Percent of Treated Water", 
+     main=paste0(usage$name[1],"\n Unaccounted Water Loss"), ylim=c(0,100), las=1) 
+#las sets all labels horizontal
+abline(h=c(10,20,30,40,50,60,70,80,90,100), lty=3, col="lightgray")
+  lines(unaccount$year, unaccount$GrossPer, lwd=2, col="black");    
+    points(unaccount$year, unaccount$GrossPer, pch=unaccount$pch, col=unaccount$col, cex=1.2)
+  lines(unaccount$year, unaccount$AdjustedPer, lwd=2, col=pal[1]);
+  lines(unaccount$year, unaccount$leakEst, lwd=2, lty=2, col=pal[2]);    
+legend("topleft", c("Estimated Gross Unaccounted Water","Reported Gross Unaccounted Water","Adjusted Unaccounted Water (known)", "Estimated Leaks"), 
+       col=c("black","black",pal[1],pal[2]), lwd=2, lty=c(1,1,1,2), pch=c(1,19,NA,NA), cex = 1.1)
+  
+
+```
+
+
+
+
+
+```{r, fig.cap="Number of connections by customer class and customer class changes over time. The majority of connections are to residential customers. Should brainstorm how to make this plot better looking, since it is over overpowered by residential.", echo=FALSE}
+
+#### Interconnections Spreadsheet
+
+
+#read in data
+customers <- read_excel(paste0(swd_osData, fileName), sheet="customers"); 
+#head(customers)
+customers$nConnections = as.numeric(as.character(customers$nConnections))
+  
+#remove duplicates and pull out only by customer type
+custType <- customers %>% filter(groupBy=="Customer") %>% group_by(year, class) %>% summarize(nConnections = median(nConnections, na.rm=TRUE))
+
+#reshape the table
+connects <- custType %>% spread(class, value=nConnections)
+#reorder dataframe
+connects <- connects[c("year", "Residential", "Industrial","Commercial","Public","Other Utilities")]
+
+#plot customers over time
+ggplot(custType) +
+  geom_bar(aes(x=year, y=nConnections, fill=class), stat="identity") +
+  scale_fill_manual(values=c(pal[1], pal[2], pal[5], pal[3], pal[4])) +
+  labs(x="Year", y="Number of Connections", fill = "Class", title = paste0(customers$name[1],":\n Number of Connections by Customer Class"))
+
+```
+
+
+
+
+
+```{r, fig.cap="For every year where revenue is known, the breakdown of revenue by how it was generated is shown. Themajority of the revenue will come from residential water bills. For visualization sake, we should consider consolidating some of the less important categories to make them into a miscellaneous category."}
+
+#### Fiscal Data
+
+fiscal <- read_excel(paste0(swd_osData, fileName), sheet="fiscal"); 
+#head(fiscal)
+#fix first row issue so that the column names are correct
+names(fiscal) <- as.matrix(fiscal[1, ]); fiscal <- fiscal[-1, ]
+
+#convert from character to numeric
+fiscal[,c(5:dim(fiscal)[2])] <- sapply(fiscal[c(5:dim(fiscal)[2])],as.numeric)
+
+#revenue
+revenues <- fiscal %>% filter(category=="Revenues")
+names.revenue = seq(1988,2017,1)
+
+#create a bar plot of revenues over time
+par(mar=c(2,4,3,1))  #par(mar = c(bottom, left, top, right))
+#remove last row, which is the total
+barplot((as.matrix(fiscal[c(1:dim(revenues)[1]-1),c(5:dim(revenues)[2])])/1000000), names.arg=names.revenue, main=paste0(fiscal$name[1],":\n Operating Revenue Generated"),
+        col=c(pal,pal2), ylim=c(0,14), las=1, ylab="Revenues ($Millions)")
+abline(h=0, col="black")
+legend("topleft",head(unique(revenues$subcategory),-1), fill=c(pal,pal2),
+       cex=0.8, ncol=2)
+```
+
+
+
+
+
+```{r, fig.cap="Graphs display the cost of quarterly water bills over time, based on the size of the meter. The sizes of meters were arbitrarily separated into two groups, Residential size and Commercial/Industrial size so that values can be better displayed."}
+
+#### Rates
+
+#read in rate data to get years of known rate changes
+rates <- read_excel(paste0(swd_osData, fileName), sheet="rates"); #head(rates)
+rateYearSet <- unique(rates$yearSet)
+
+#picked gravity and flat charges arbitrarily. Did not look at consumption charges
+ratesMeter <- rates %>%
+  filter(charges=="Flat Charge" & otherClass=="Gravity")
+
+#divide arbitrarily based on size of meter
+ratesMeterHouse <- ratesMeter %>%
+  filter(class %in% c("0.625", "0.75", "1", "1.5"))
+ratesMeterComm <- ratesMeter %>%
+  filter(class %in% c("2", "3", "4", "6", "8"))
+
+#plot House sized meters and cost per year
+resrates <- ggplot(ratesMeterHouse, aes(x=rateYear, y=cost)) +
+  geom_line(aes(color=class), size=1.5) +
+  scale_color_manual(values=c(pal, pal2)) +
+  labs(x="Year", y="Cost of Quarterly Water Bill ($)", title =
+         paste0(rates$name[1], "\n Quarterly Water Bill for Residential Homes",
+                color="Size of Meter (in)"))
+
+comrates <- ggplot(ratesMeterComm, aes(x=rateYear, y=cost)) +
+  geom_line(aes(color=class), size=1.5) +
+  scale_color_manual(values=c(pal, pal2)) +
+  labs(x="Year", y="Cost of Quarterly Water Bill ($)", title =  "Quarterly Water Bill for Commercial Users", color="Size of Meter (in)")
+  
+plot_grid(resrates, comrates, ncol=1)
+```
+
+
+
+```{r, echo=FALSE}
+
+#Average Rate for someone with a 0.75 inch pipe that uses 5000 gallons a month
+hhrates <- subset(rates, charges=="Consumption Charge" & otherClass=="Pumping" | is.na(otherClass)==TRUE) %>% as.data.frame();  
+hhmeter <- subset(rates, class=="0.75")
+
+unique.year <- unique(hhrates$rateYear)
+hh.quarter <- as.data.frame(matrix(nrow=length(unique.year),ncol=5)); 
+colnames(hh.quarter) <- c("PWSID","Name","Year","Flat","cost15k")
+hh.quarter$PWSID <- as.character(rates$PWSID[1])
+hh.quarter$Name <- as.character(rates$name[1])  
+hh.quarter$Year <- unique.year
+
+for(i in 1:length(unique.year)){
+  zt.flat <- subset(hhmeter, rateYear==unique.year[i])$cost[1]
+  
+  if(unique.year[i]<=1998){
+    zt.rates1 <- subset(hhrates, rateYear==unique.year[i] & class=="3000")$cost[1];       
+    zt.rates2 <- subset(hhrates, rateYear==unique.year[i] & class=="6000")$cost[1];
+    zt.rates3 <- subset(hhrates, rateYear==unique.year[i] & class=="20000")$cost[1]; 
+    
+    zt.quarter = zt.flat + zt.rates1*3 + zt.rates2*3 + zt.rates3*(15-6)
+    hh.quarter[i,"Flat"] <- zt.flat;
+    hh.quarter[i,"cost15k"] <- zt.quarter;
+  }
+  
+  if(unique.year[i]>1998){
+    #zt.rates1 <- subset(hhrates, rateYear==unique.year[i] & class=="20000" & costUnit=="flat fee")$cost[1];       
+    zt.rates2 <- subset(hhrates, rateYear==unique.year[i] & class=="20000" & costUnit=="per thousand gallons")$cost[1];
+    
+    zt.quarter = zt.flat + zt.rates2*15
+    hh.quarter[i,"Flat"] <- zt.flat;
+    hh.quarter[i,"cost15k"] <- zt.quarter;
+  }
+  
+  }
+#hh.quarter
+hh.quarter$Monthly = round(hh.quarter$cost15k/3,2)
+```
+
+```{r, fig.cap="The estimated monthly cost for 5,000 gallons of water changed over the time period. Need explanation/clarification from Lauren for this part"}
+
+#Plot Estimated monthly rates (note... I cannot duplicate their estimated values)
+plot(hh.quarter$Year, hh.quarter$Monthly, pch=19,col="darkgray", cex=1.5, ylim=c(0,50), 
+     ylab="Estimated Monthly Cost for 5kgal", 
+     xlab="", main=paste0(rates$name[1],":\n Estimated Monthly Bill"))
+lines(hh.quarter$Year, hh.quarter$Monthly, lwd=2, col="black")
+```
+
+
+
+ 
+
+```{r, fig.cap="Graph shows the number of total connections over the time period (1988-2018) in black, operating revenue over the time period in orange, and the years of known rate changes shown by vertical dashed lines. The graph shows that increases in revenue often line up with rate changes, yet the total number of connections over nearly 30 year time period has slowly declined or remained relatively stagnant."}
+
+#### Connections, revenues, rate changes
+
+#Plot total number of connections with total revenue generated
+connects$Total = connects$Residential+connects$Industrial+connects$Commercial+connects$Public+connects$`Other Utilities`
+  
+classRevenue <- revenues %>% filter(subcategory=="Residential" | subcategory=="Industrial" | subcategory=="Commercial" | 
+                                        subcategory=="Public Buildings / Public Authorities" | subcategory=="Sales to other Water Authorities" |
+                                      subcategory=="Total Operating Revenues")
+#head(classRevenue)
+gathRev <- classRevenue %>% gather(year, Revenue, y1988:y2017) 
+#puts years in columns and matches each variable within that year; super helpful
+gathRev$year<- as.numeric(substr(gathRev$year,2,5))
+gathRev$Millions <- gathRev$Revenue/1000000
+
+#subset categories
+totRev <- subset(gathRev, subcategory=="Total Operating Revenues")
+resRev <- subset(gathRev, subcategory=="Residential");                        
+indRev <- subset(gathRev, subcategory=="Industrial");
+comRev <- subset(gathRev, subcategory=="Commercial");                         
+pubRev <- subset(gathRev, subcategory=="Public Buildings / Public Authorities");
+utilRev <- subset(gathRev, subcategory=="Sales to other Water Authorities");
+
+#plot customers over time
+par(mar=c(2,5,3,4))  #par(mar = c(bottom, left, top, right))
+plot(connects$year, connects$Total, type="n", xlab="", ylab="", 
+     ylim=c(0,max(connects$Total)+1000), 
+     xlim=c(min(totRev$year, connects$year), 2020), 
+     xaxs="i", yaxs="i",
+     main=paste0(gathRev$name[1],"\n Total Connections & Revenue"), las=1) #las sets all labels horizontal
+  mtext("Number of Connections", side=2, line=3.8)
+  lines(connects$year, connects$Total, lwd=2, col="black");    
+
+par(new=TRUE)
+plot(totRev$year, totRev$Millions, type="n", axes=F, ylab="", xlab="", 
+     xlim=c(min(totRev$year, connects$year), 2020), xaxs="i", yaxs="i",
+     ylim=c(0,max(totRev$Millions, na.rm=TRUE)+2)) #las sets all labels horizontal
+  lines(totRev$year, totRev$Millions, lwd=2, col=pal[4])
+  abline(v=rates$yearSet, col="darkgray", lty=3)  
+  mtext("Total Operating Revenue ($Millions)", side=4, col=pal[4], line=2.5)
+  axis(side = 4, col=pal[4], las=2, col.axis=pal[4])
+legend("bottomright", c("Number of Connections","Operating Revenues",
+                        "Year of Known Rate Change"), 
+       col=c("black",pal[4],"darkgray"), lwd=c(2,2,1), lty=c(1,1,3))
+```
+
+
+```{r, fig.cap="Average annual amount of revenue earned per connection by customer class. While residential customers bring in the most revenue, the revenue earned per connection is the lowest, which brings down the total."}
+
+#Plot Ave Dollar Per Connection
+revCon.total <- merge(connects[,c("year","Total")], totRev[,c("year","Revenue")], 
+                      by.x="year", by.y="year", all=TRUE)
+  revCon.total$PerConnect = revCon.total$Revenue/revCon.total$Total
+
+revCon.res <- merge(connects[,c("year","Residential")], resRev[,c("year","Revenue")], 
+                    by.x="year", by.y="year", all=TRUE)
+  revCon.res$PerConnect = revCon.res$Revenue/revCon.res$Residential
+
+revCon.ind <- merge(connects[,c("year","Industrial")], indRev[,c("year","Revenue")], 
+                    by.x="year", by.y="year", all=TRUE)
+  revCon.ind$PerConnect = revCon.ind$Revenue/revCon.ind$Industrial
+  
+revCon.com <- merge(connects[,c("year","Commercial")], comRev[,c("year","Revenue")], 
+                    by.x="year", by.y="year", all=TRUE)
+  revCon.com$PerConnect = revCon.com$Revenue/revCon.com$Commercial
+
+revCon.pub <- merge(connects[,c("year","Public")], pubRev[,c("year","Revenue")], 
+                    by.x="year", by.y="year", all=TRUE)
+  revCon.pub$PerConnect = revCon.pub$Revenue/revCon.pub$Public
+  
+revCon.util <- merge(connects[,c("year","Other Utilities")], utilRev[,c("year","Revenue")], 
+                     by.x="year", by.y="year", all=TRUE)
+  revCon.util$PerConnect = revCon.util$Revenue/revCon.util$'Other Utilities'
+
+#plot per connection costs over time
+par(mar=c(2,5,3,1))  #par(mar = c(bottom, left, top, right))
+plot(revCon.total$year, revCon.total$PerConnect, type="n", xlab="", 
+     ylab="Revenue per Connection ($)", 
+     ylim=c(0,max(revCon.ind$PerConnect, na.rm=TRUE)), 
+     xlim=c(min(revCon.total$year), 2020), xaxs="i", yaxs="i",
+     main=paste0(totRev$name[1]," \n Average Annual Cost Per Connection"), 
+     las=1) #las sets all labels horizontal
+
+  lines(revCon.total$year, revCon.total$PerConnect, lwd=4, col="black");      
+  points(revCon.total$year, revCon.total$PerConnect, pch=19, col="black");
+  
+  lines(revCon.res$year, revCon.res$PerConnect, lwd=2, col=pal[1]);           
+  points(revCon.res$year, revCon.res$PerConnect, pch=19, col=pal[1]);
+  
+  lines(revCon.com$year, revCon.com$PerConnect, lwd=2, col=pal[5]);       
+  points(revCon.com$year, revCon.com$PerConnect, pch=19, col=pal[5]);
+  
+  lines(revCon.ind$year, revCon.ind$PerConnect, lwd=2, col=pal[3]);         
+  points(revCon.ind$year, revCon.ind$PerConnect, pch=19, col=pal[3]);
+  
+  lines(revCon.pub$year, revCon.pub$PerConnect, lwd=2, col=pal[4]);        
+  points(revCon.pub$year, revCon.pub$PerConnect, pch=19, col=pal[4]); 
+  
+abline(v=rateYearSet, col="darkgray", lty=3)
+legend("topleft",,c("Industrial", "Commercial","Residential","Public","Total"),
+       col=c(pal[3],pal[5],pal[1],pal[4],"black"), lwd=c(2,2,2,2,4),
+       cex=0.8, ncol=2)
+```
+
+
+```{r, fig.cap="Top 10 customers make up a large percentage of the total revenue and total treated water usage."}
+####Percent of Water and Revenue from Top 10 Customers 
+
+#read in data
+top10 <- read_excel(paste0(swd_osData, fileName), sheet="largestCust"); #head(top10)
+#convert to numeric
+top10[,c("Gallons","Revenue","percentTotalGal","percentTotalRev")] <- 
+    sapply(top10[,c("Gallons","Revenue","percentTotalGal","percentTotalRev")],as.numeric)  
+
+top10.type <- top10 %>% 
+  group_by(Year, Type) %>% 
+  summarize(nType=n(), sumPerGal = sum(percentTotalGal, na.rm=TRUE), 
+            sumPerRev = sum(percentTotalRev, na.rm=TRUE)) %>% as.data.frame()
+#groups by type of customer (e.g. Manufacturing, Dairy, Housing Authority, etc.)
+#add missing years so doesn't draw a line between
+all.years <- seq(min(top10$Year, na.rm=TRUE), max(top10$Year, na.rm=TRUE),1) %>% 
+  as.data.frame(); colnames(all.years)=c("Year")
+#create data frame columns
+  all.years$Type = "Total";       
+  all.years$nType=NA;           
+  all.years$sumPerGal=NA;    
+  all.years$sumPerRev=NA;
+
+top10.tot <- top10.type %>% filter(Type=="Total") %>% as.data.frame()
+  #top 10 put together shows percent of total revenue each year
+top10.tot <- rbind(top10.tot, all.years)
+top10.tot <- top10.tot %>% 
+  group_by(Year, Type) %>% 
+  summarize(nType=median(nType, na.rm=TRUE), sumPerGal = median(sumPerGal, na.rm=TRUE), 
+            sumPerRev = median(sumPerRev, na.rm=TRUE))
+top10.tot$sumPerGal <- ifelse(top10.tot$sumPerGal==0,NA,top10.tot$sumPerGal)
+
+#plot total over time
+par(mar=c(2,5,3,1))  #par(mar = c(bottom, left, top, right))
+plot(top10.tot$Year, top10.tot$sumPerGal, type="n", xlab="", 
+     ylab="Percent of Total Revenue or Treated Water", ylim=c(0,50), 
+     xlim=c(min(top10.tot$Year), 2020), xaxs="i", yaxs="i",
+     main=paste0(top10$Name[1],"\n Top 10 Customers Each Year"), las=1) 
+  lines(top10.tot$Year, top10.tot$sumPerGal, lwd=2, col=pal[1]);          
+  points(top10.tot$Year, top10.tot$sumPerGal, pch=19, cex=1.2, col=pal[1])
+  lines(top10.tot$Year, top10.tot$sumPerRev, lwd=2, col=pal[2]);    
+  points(top10.tot$Year, top10.tot$sumPerRev, pch=19, cex=1.2, col=pal[2])
+legend("topright",c("Treated Water Usage","Revenue"), 
+       col=c(pal[1],pal[2]), pch=19, cex=1.2)
+```
+
+
+```{r, fig.cap="Divides the top 10 customers by type of customer and shows the percent of revenue earned from each customer type in each year of known revenue. From the graph, you can see that manufacturing as a top customer decreases over time, while municipalities as a source of revenue increases."}
+###Diversity of Customer class
+
+top10.type <- top10.type %>% filter(Type != "Total" & Year>1960)
+  
+top10.gal <- top10.type %>% 
+  dplyr::select(Year,Type,sumPerRev) %>% 
+  spread(Type, sumPerRev) #spreads data so you can see the total customer type revenue per year
+top10.gal[is.na(top10.gal)] <- 0
+all.years <- seq(min(top10$Year, na.rm=TRUE), max(top10$Year, na.rm=TRUE),by=1) %>% as.data.frame(); 
+colnames(all.years)=c("Year")
+all.years[c(2:dim(top10.gal)[2])]<-0;
+  #keep only those years missing
+    all.years <-all.years[!(all.years$Year %in% unique(top10.gal$Year)),]
+    colnames(all.years) <- names(top10.gal)
+top10.gal <- rbind(top10.gal, all.years)
+top10.gal <- top10.gal %>% arrange(Year)
+
+
+#plot customers over time
+par(mar=c(2,5,3,1))  #par(mar = c(bottom, left, top, right))
+barplot(t(as.matrix(top10.gal[,-1])), names.arg=top10.gal$Year, 
+        main=paste0(top10$Name[1],":\n Main Users by Type"), ylim=c(0,16), las=1, 
+        ylab="Percent of Revenue",
+        col=c(pal,pal2))
+abline(h=0, col="black")
+legend("topright",c("Academic", "Country Club","Dairy Plant","Hopsital",
+                    "Housing Authority","Laundry","Manufacturing","Municipality",
+                    "Rehab Center"), 
+       fill=c(pal,pal2), cex=0.9, ncol=2)
+```
+
+
+```{r, fig.cap="The top ranked customer (providing the largest revenue source) from each year. In Johnstown's case, the top 10 customers were totaled, so this shows the total contribution from the top 10 customers over time."}
+#Contribution from first ranked top customer over the years
+top1 <- top10 %>% group_by(Year) %>% 
+  filter(Revenue == max(Revenue, na.rm=TRUE)) %>% as.data.frame()
+#if there is a total row, this will grab just the total revenue from the top10
+all.years <- seq(min(top10$Year, na.rm=TRUE), 
+                 max(top10$Year, na.rm=TRUE),1) %>% as.data.frame(); 
+colnames(all.years)=c("Year")
+all.years <-all.years[!(all.years$Year %in% unique(top10$Year)),] %>% 
+  as.data.frame(); colnames(all.years)=c("Year")
+all.years[c(2:dim(top10)[2])]<-NA;  
+all.years <- all.years[,c("V7","V2","V3","V4","V5","V6","Year",
+                          "V8","V9","V10","V11","V12","V13","V14")]
+colnames(all.years) <- names(top10)
+
+top1 <- rbind(top1, all.years) %>% arrange(Year)
+
+plot(top1$Year, top1$percentTotalRev, pch=19,col=pal[2], 
+     cex=1.5, ylim=c(0,25), 
+     ylab="Contribution from Largest Revenue Source (%)", 
+     xlab="", main=paste0(top10$Name[1],":\n Largest Revenue Customer"))
+lines(top1$Year, top1$percentTotalRev, lwd=3, col=pal[2])
+```
+
+```{r, fig.cap="Revenue earned from each of the top 10 customers was divided by the total number of thousand gallons used to produce $/gal value. The values ranged depending on the type of customer, so the range of values was plotted for each year of revenue reported."}
+#Range of prices paid
+top10$perkGal = top10$Revenue/top10$Gallons*1000
+all.years <- seq(min(top10$Year, na.rm=TRUE), max(top10$Year, na.rm=TRUE),1) %>% as.data.frame(); colnames(all.years)=c("Year")
+#keep only those years missing
+all.years <-all.years[!(all.years$Year %in% unique(top10$Year)),] %>% as.data.frame(); colnames(all.years)=c("Year")
+  all.years[c(2:dim(top10)[2])]<-NA;  
+  all.years <- all.years[,c("V7","V2","V3","V4","V5","V6","Year","V8","V9","V10","V11","V12","V13","V14","V15")]
+colnames(all.years) <- names(top10)
+top10.all <- rbind(top10 %>% as.data.frame(), all.years)
+top10.all <- top10.all %>% filter(is.na(Year) == FALSE) %>% arrange(Year)
+
+par(mar=c(2,4,3,1))  #par(mar = c(bottom, left, top, right))
+boxplot(top10.all$perkGal~top10.all$Year, na.rm=TRUE,las=1, xaxs="i", yaxs="i", ylim=c(0,6), col=pal[1], ylab="Cost Per Thousand Gallons", 
+        main=paste0(top10$Name[1],":\n Average Cost Per Thousand Gallons"))
+        abline(h=0, lwd=2, col="black")
+```
+
+\pagebreak
+
+```{r, fig.cap="Plot shows range of cost per thousand gallons that each type of customer has paid over the bonds when revenue was reported."}
+#top 10 customers and the range of $ they pay per 1000 gallons
+
+###MUST CHANGE TYPE LIST FOR BOX PLOT FOR EACH CITY
+
+top10.nozero <- subset(top10.all, perkGal >0 & Type != "Total")
+
+boxplot(top10.nozero$perkGal~top10.nozero$Type, na.rm=TRUE, 
+        xaxs="i", yaxs="i", ylim=c(0,6), col=c(pal, pal2),
+        ylab="Cost Per Thousand Gallons", xlab= " ", 
+        main=paste0(top10$Name[1],"\n Average Cost Per Thousand Gallons"),
+        cex.axis=0.8)
+text(srt=45)
+legend("topleft",c("Academic", "Country Club","Dairy Plant","Hopsital","Housing Authority","Laundry","Manufacturing","Municipality","Rehab Center"), 
+       fill=c(pal, pal2), cex=0.9, ncol=2)
+
+```
+
+
+
+\newpage
+
+```{r, fig.cap="Heat map showing when customers were in the top 10 revenue producing customers for each year. You can see that while some customers were in the top 10 in the 90's others have taken their place in the 2000s."}
+#top 10 customers and how they change over time
+
+top10.notot <- subset(top10, Customer != "Total")
+zt <- table(top10.notot$Customer, top10.notot$Year) 
+#zt #table that shows when the customer was in the top 10 or not for that year. #Can show the progression over time, when some customers drop out versus when some customers enter the top 10.
+grow_colors <- c(pal[1:3])
+col_breaks = c(0,1,2,4)
+heatmap(zt, Colv = NA, Rowv = NA, scale="column", col=grow_colors, breaks=col_breaks, main=paste0(top10$Name[1],":\n Green = in top 10"))
+
+
+```
+
