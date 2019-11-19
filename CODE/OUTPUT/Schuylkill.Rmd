@@ -286,13 +286,32 @@ plot_grid(resrates, comrates, ncol=1)
 ##rates by consumption charge
 
 ratesConsumption <- rates %>%
-  filter(charges=="Consumption Charge")
-#where I left off. Will have to further filter by quarterly or monthly or by otherClass
+  filter(charges=="Consumption Charge", chargeType == "CF per Quarter")
+ratesConsumption.monthly <- ratesConsumption %>% filter(billFrequency=="Monthly")
+ggplot(ratesConsumption.monthly, aes(x=rateYear, y=cost)) +
+  geom_line(aes(color=class)) +
+  scale_color_manual(values=c(pal,pal2)) +
+  labs(x="Year", y="Cost ($) per 100 cf water", title =  "Monthly Water Charge by Consumption", color="Consumption Limit (cf) ")
+
+ratesConsump.monthly <- ratesConsumption %>% 
+  group_by(rateYear, class) %>% 
+  summarize(cost.month = ifelse(billFrequency=="Quarterly", cost/3, cost) #,
+            #class.month = ifelse(billFrequency=="Quarterly", class/3, class)
+            )
+ggplot(ratesConsump.monthly, aes(x=rateYear, y=cost.month)) +
+  geom_point(aes(color=class)) +
+  geom_line(aes(color=class)) +
+  scale_color_manual(values=c(pal,pal2)) +
+  labs(x="Year", y="Cost ($) per 100 cf water", title =  "Monthly Water Charge by Consumption", color="Consumption Limit (cf) ")
+#This graph doesn't exactly do what I want it to convey. I want to convert all quarterly charges to monthly so that both types can be graphed on the same plot and be weighted equally, but it didn't quite work 
+
 ```
 
 
 
 ```{r, echo=FALSE}
+
+#skipped this chunk because I don't really get it and am sick
 
 #Average Rate for someone with a 0.75 inch pipe that uses 5000 gallons a month
 hhrates <- subset(rates, charges=="Consumption Charge" & otherClass=="Pumping" | is.na(otherClass)==TRUE) %>% as.data.frame();  
