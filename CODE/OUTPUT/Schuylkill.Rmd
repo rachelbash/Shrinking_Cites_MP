@@ -364,16 +364,14 @@ lines(hh.quarter$Year, hh.quarter$Monthly, lwd=2, col="black")
 
  
 
-```{r, fig.cap="Graph shows the number of total connections over the time period (1988-2018) in black, operating revenue over the time period in orange, and the years of known rate changes shown by vertical dashed lines. The graph shows that increases in revenue often line up with rate changes, yet the total number of connections over nearly 30 year time period has slowly declined or remained relatively stagnant."}
+```{r, fig.cap="Graph shows the number of total connections over the time period (1988-2017) in black, operating revenue over the time period in orange, and the years of known rate changes shown by vertical dashed lines. Large gap in revenue data is unfortunate, but we can tell that revenue has increased substantially over the past 30 years. Total number of connections have stayed relatively constant."}
 
 #### Connections, revenues, rate changes
 
 #Plot total number of connections with total revenue generated
-connects$Total = connects$Residential+connects$Industrial+connects$Commercial+connects$Public+connects$`Other Utilities`
+
   
-classRevenue <- revenues %>% filter(subcategory=="Residential" | subcategory=="Industrial" | subcategory=="Commercial" | 
-                                        subcategory=="Public Buildings / Public Authorities" | subcategory=="Sales to other Water Authorities" |
-                                      subcategory=="Total Operating Revenues")
+classRevenue <- revenues %>% filter(SubCategory=="Sales of Water" | SubCategory=="Sales of water and sewer" | SubCategory=="Sewer Fees" | SubCategory=="Customer penalties" | SubCategory=="Sale of Water - Tremont" | SubCategory=="Total Operating Revenues")
 #head(classRevenue)
 gathRev <- classRevenue %>% gather(year, Revenue, y1988:y2017) 
 #puts years in columns and matches each variable within that year; super helpful
@@ -381,12 +379,13 @@ gathRev$year<- as.numeric(substr(gathRev$year,2,5))
 gathRev$Millions <- gathRev$Revenue/1000000
 
 #subset categories
-totRev <- subset(gathRev, subcategory=="Total Operating Revenues")
-resRev <- subset(gathRev, subcategory=="Residential");                        
-indRev <- subset(gathRev, subcategory=="Industrial");
-comRev <- subset(gathRev, subcategory=="Commercial");                         
-pubRev <- subset(gathRev, subcategory=="Public Buildings / Public Authorities");
-utilRev <- subset(gathRev, subcategory=="Sales to other Water Authorities");
+totRev <- subset(gathRev, SubCategory=="Total Operating Revenues")
+totRev$Millions <- na_if(totRev$Millions,0)
+waterRev <- subset(gathRev, SubCategory=="Sales of Water");                        
+watersewerRev <- subset(gathRev, SubCategory=="Sales of water and sewer");
+sewerRev <- subset(gathRev, SubCategory=="Sewer Fees");                         
+penatliesRev <- subset(gathRev, SubCategory=="Customer penalties");
+tremontRev <- subset(gathRev, SubCategory=="Sale of Water - Tremont");
 
 #plot customers over time
 par(mar=c(2,5,3,4))  #par(mar = c(bottom, left, top, right))
@@ -398,7 +397,7 @@ plot(connects$year, connects$Total, type="n", xlab="", ylab="",
   mtext("Number of Connections", side=2, line=3.8)
   lines(connects$year, connects$Total, lwd=2, col="black");    
 
-par(new=TRUE)
+ par(new=TRUE)
 plot(totRev$year, totRev$Millions, type="n", axes=F, ylab="", xlab="", 
      xlim=c(min(totRev$year, connects$year), 2020), xaxs="i", yaxs="i",
      ylim=c(0,max(totRev$Millions, na.rm=TRUE)+2)) #las sets all labels horizontal
@@ -413,7 +412,7 @@ legend("bottomright", c("Number of Connections","Operating Revenues",
 
 
 ```{r, fig.cap="Average annual amount of revenue earned per connection by customer class. While residential customers bring in the most revenue, the revenue earned per connection is the lowest, which brings down the total."}
-
+#Start here, rename these according to names up top 
 #Plot Ave Dollar Per Connection
 revCon.total <- merge(connects[,c("year","Total")], totRev[,c("year","Revenue")], 
                       by.x="year", by.y="year", all=TRUE)
