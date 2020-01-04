@@ -1,0 +1,173 @@
+---
+title: "Revenue and Expenditures"
+author: "Walker Grimshaw"
+date: "1/1/2020"
+output: pdf_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, warning = FALSE)
+
+library(tidyverse)
+library(readxl)
+
+## Set working directory to project directory
+#os_data_path <- getwd()
+#filename <- "os_PA3540038_Schuylkill.xslx"
+
+## Read in raw fiscal worksheets
+Schuylkill <- read_excel("./Data/Raw/bond_data/os_PA3540038_Schuylkill.xlsx",
+                         sheet = "fiscal")
+Aliquippa <- read_excel("./Data/Raw/bond_data/os_PA5040006_Aliquippa.xlsx",
+                        sheet = "fiscal")
+Lewistown <- read_excel("./Data/Raw/bond_data/os_PA4440010_Lewistown.xlsx",
+                        sheet = "fiscal")
+Pittsburgh <- read_excel("./Data/Raw/bond_data/os_PA5020038_Pittsburgh.xlsx",
+                         sheet = "fiscal")
+Johnstown <- read_excel("./Data/Raw/bond_data/os_PA4110034_Johnstown.xlsx",
+                        sheet = "fiscal")
+
+## Set plot theme
+WalkersTheme <- theme_bw(base_size = 12) +
+  theme(legend.position = "top")
+
+theme_set(WalkersTheme)
+```
+
+## Revenue and Expenditures by Consolidated Systems
+
+The vertical red lines in the figures indicate years when a the system acquired another system.
+
+### Schuylkill
+
+```{r}
+#fix first row issue so that the column names are correct
+names(Schuylkill) <- as.matrix(Schuylkill[1, ])
+Schuylkill <- Schuylkill[-1, ]
+
+## subset total revenue and total expenses and net income
+revenue_Schuylkill <- Schuylkill %>%
+  filter(SubCategory == "Total Operating Revenues" |
+           SubCategory == "Total Operating Expenses" |
+           SubCategory == "Net Income") %>%
+  gather("Year", "USD", 5:length(Schuylkill)) %>%
+  # make USD column numeric instead of character for plotting
+  mutate(USD = as.numeric(USD),
+         Year = as.numeric(gsub("y","", Year)))
+
+## plot each of the three values over time
+ggplot(revenue_Schuylkill) +
+  geom_col(aes(x = Year, y = USD, fill = SubCategory), position = "dodge") +
+  # years when systems were added
+  geom_vline(xintercept = c(1995, 1997, 2008),
+             linetype = "dotted", color = "red", size = 1) +
+  labs(title = "Schuylkill", fill = "")
+```
+
+### Aliquippa
+
+```{r}
+#fix first row issue so that the column names are correct
+names(Aliquippa) <- as.matrix(Aliquippa[1, ])
+Aliquippa <- Aliquippa[-1, ]
+
+## subset total revenue and total expenses and net income
+revenue_Aliquippa <- Aliquippa %>%
+  filter(SubCategory == "Total Operating Revenues" |
+           SubCategory == "Total Operating Expenses" |
+           SubCategory == "Net Income") %>%
+  gather("Year", "USD", 5:length(Aliquippa)) %>%
+  mutate(USD = as.numeric(USD),
+         Year = as.numeric(gsub("y","", Year)))
+
+## plot each of the three values over time
+Aliquippa_plot <- ggplot(revenue_Aliquippa) +
+  geom_col(aes(x = Year, y = USD, fill = SubCategory), position = "dodge") +
+  # years when systems were added
+  geom_vline(xintercept = c(1998), linetype = "dotted", color = "red", size = 1) +
+  labs(title = "Aliquippa", fill = "")
+
+Aliquippa_plot
+```
+
+### Lewistown
+
+```{r}
+#fix first row issue so that the column names are correct
+names(Lewistown) <- as.matrix(Lewistown[1, ])
+Lewistown <- Lewistown[-1, ]
+
+## subset total revenue and total expenses and net income
+revenue_Lewistown <- Lewistown %>%
+  filter(SubCategory == "Total Operating Revenues" |
+           SubCategory == "Total Operating Expenses" |
+           SubCategory == "Net Income") %>%
+  gather("Year", "USD", 5:length(Lewistown)) %>%
+  mutate(USD = as.numeric(USD),
+         Year = as.numeric(gsub("y","", Year)))
+
+## plot each of the three values over time
+Lewistown_plot <- ggplot(revenue_Lewistown) +
+  geom_col(aes(x = Year, y = USD, fill = SubCategory), position = "dodge") +
+  # years when systems were added
+  geom_vline(xintercept = c(1995, 2000),
+             linetype = "dotted", color = "red", size = 1) +
+  labs(title = "Lewistown", fill = "")
+Lewistown_plot
+```
+
+### Pittsburgh
+
+```{r}
+#fix first row issue so that the column names are correct
+names(Pittsburgh) <- as.matrix(Pittsburgh[1, ])
+Pittsburgh <- Pittsburgh[-1, ]
+
+## subset total revenue and total expenses and net income
+revenue_Pittsburgh <- Pittsburgh %>%
+  filter(SubCategory == "Total Operating Revenues" |
+           SubCategory == "Total Operating Expenses" |
+           SubCategory == "Net Income") %>%
+  gather("Year", "USD", 5:length(Pittsburgh)) %>%
+  mutate(USD = as.numeric(USD),
+         Year = as.numeric(gsub("y","", Year)))
+
+## plot each of the three values over time
+Pittsburgh_plot <- ggplot(revenue_Pittsburgh) +
+  geom_col(aes(x = Year, y = USD, fill = SubCategory), position = "dodge") +
+  # years when systems were added
+  geom_vline(xintercept = c(2010),
+             linetype = "dotted", color = "red", size = 1) +
+  labs(title = "Pittsburgh", fill = "")
+Pittsburgh_plot
+```
+
+## Revenue and Expenditures for Systems that have not consolidated
+
+### Johnstown
+
+```{r}
+#fix first row issue so that the column names are correct
+names(Johnstown) <- as.matrix(Johnstown[1, ])
+Johnstown <- Johnstown[-1, ]
+
+## subset total revenue and total expenses and net income
+revenue_Johnstown <- Johnstown %>%
+  filter(subcategory == "Total Operating Revenues" |
+           subcategory == "Total Operating Expenses" |
+           subcategory == "Net Income") %>%
+  gather("Year", "USD", 5:length(Johnstown)) %>%
+  mutate(USD = as.numeric(USD),
+         Year = as.numeric(gsub("y","", Year)))
+
+## plot each of the three values over time
+Johnstown_plot <- ggplot(revenue_Johnstown) +
+  geom_col(aes(x = Year, y = USD, fill = subcategory), position = "dodge") +
+  # years when systems were added
+  #geom_vline(xintercept = c(2010),
+  #           linetype = "dotted", color = "red", size = 1) +
+  labs(title = "Johnstown", fill = "")
+Johnstown_plot
+```
