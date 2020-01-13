@@ -13,10 +13,6 @@ knitr::opts_chunk$set(echo = FALSE, warning = FALSE)
 library(tidyverse)
 library(readxl)
 
-## Set working directory to project directory
-#os_data_path <- getwd()
-#filename <- "os_PA3540038_Schuylkill.xslx"
-
 ## Read in raw fiscal worksheets
 Schuylkill <- read_excel("./Data/Raw/bond_data/os_PA3540038_Schuylkill.xlsx",
                          sheet = "fiscal")
