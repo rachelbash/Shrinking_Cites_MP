@@ -14,6 +14,13 @@ library(tidyverse)
 library(readxl)
 
 ## Read in raw rates worksheets
-Schuylkill <- read_excel("./Data/Raw/bond_data/os_PA3540038_Schuylkill.xlsx",
+Schuylkill_rates <- read_excel("./Data/Raw/bond_data/os_PA3540038_Schuylkill.xlsx",
                          sheet = "rates")
 ```
+
+## Price of Basic Service
+
+```{r}
+## Monthly price of 5,000 gallons per month
+```
+
