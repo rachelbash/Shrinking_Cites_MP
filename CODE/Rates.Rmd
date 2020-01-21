@@ -18,6 +18,10 @@ Schuylkill_rates <- read_excel("./Data/Raw/bond_data/os_PA3540038_Schuylkill.xls
                                sheet = "rates")
 Aliquippa_rates <- read_excel("./Data/Raw/bond_data/os_PA5040006_Aliquippa.xlsx",
                               sheet = "rates")
+## Johnstown's rates formatted differently than the others after 1998
+Johnstown_rates <- read_excel("./Data/Raw/bond_data/os_PA4110034_Johnstown.xlsx",
+                              sheet = "rates")
+
 ```
 
 ## Lowest Quintile Income
@@ -43,7 +47,7 @@ HH_size <- 4 # people per household
 gal_to_CF <- 0.133681
 
 ## test inputs for monthly price calculation
-PWS <- Aliquippa_rates
+PWS <- Johnstown_rates
 Volume_gal_mon <- 5000 # gallons per month
 
 ## Basic water service = 50 gal per person per day
@@ -52,7 +56,7 @@ Volume_CF_qtr <- Volume_gal_mon*3*gal_to_CF
 Volume_gal_qtr <- Volume_gal_mon*3
 Volume_CF_mon <- Volume_gal_mon*gal_to_CF
 
-## vector of volumes depending on cf or gallon
+## Meter size for some flat rates
 MeterSize <- "0.625"
 
 ## Flat portion of the price, based on the meter size
@@ -84,7 +88,7 @@ unique_years <- as.numeric(unique(volume_price$yearSet)) %>%
   na.omit()
 
 ## tester
-year <- 2016
+year <- 2009
 #unique_years <- c(1990, 1991, 1995)
 
 ## initialize empty final cost dataframe, to be filled by for loop of each unique rate year
@@ -114,7 +118,8 @@ for (year in unique_years) {
   
   ## change annual conversion factor to 4 if the charge is quarterly
   PWS_year <- mutate(PWS_year,
-                     annual_conversion_factor = case_when(quarter ~ 4))
+                     annual_conversion_factor = case_when(quarter ~ 4,
+                                                          month ~ 12))
   
   ## calculate the volume of water in each price bracket/class
   for (i in 1:length(PWS_year$class)) {
@@ -129,9 +134,11 @@ for (year in unique_years) {
 
 ## Add cost unit magnitude column, extracting price per 100 CF or 1000 gal
 PWS_cost <- PWS_cost %>%
-  ## extract number from costUnit column
-  ## need to account for use of word "thousand"
-  mutate(costUnitMagnitude = as.numeric(regmatches(costUnit,
+  ## change "thousand" to 1000 and "hundred" to 100
+  mutate(costUnit = gsub("thousand", "1000", costUnit, ignore.case = T),
+         costUnit = gsub("hundred", "100", costUnit, ignore.case = T),
+         ## extract number from costUnit column
+         costUnitMagnitude = as.numeric(regmatches(costUnit,
                                         gregexpr("[[:digit:]]+", costUnit))),
          ## add and calculate total_cost column,
          ## just taking cost if charges contains "minimum" or "flat"
@@ -149,13 +156,15 @@ summary_cost <- PWS_cost %>%
             annual_cost = sum(annual_cost)) %>%
   group_by(yearSet) %>%
   summarize(periodic_cost = first(periodic_cost),
-            annual_cost = first(annual_cost))
+            annual_cost = first(annual_cost)) %>%
+  ## make sure yearSet is numeric
+  mutate(yearSet = as.numeric(yearSet))
   
 
 ## plot
-flat_plot <- ggplot(flat_price) +
-  geom_col(aes(x = yearSet, y = cost))
-flat_plot
+# flat_plot <- ggplot(flat_price) +
+#   geom_col(aes(x = yearSet, y = cost))
+# flat_plot
 
 volume_plot <- ggplot(summary_cost) +
   geom_col(aes(x = yearSet, y = annual_cost)) +
@@ -165,8 +174,11 @@ volume_plot
 ## need to group by year and otherCost
 
 ###########################################
+```
 
 
+
+```{r}
 ## Create a function
 Price <- function(PWS, Volume, MeterSize){
   flat_price <- PWS %>%
