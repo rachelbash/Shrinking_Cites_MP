@@ -15,12 +15,175 @@ library(readxl)
 
 ## Read in raw rates worksheets
 Schuylkill_rates <- read_excel("./Data/Raw/bond_data/os_PA3540038_Schuylkill.xlsx",
-                         sheet = "rates")
+                               sheet = "rates")
+Aliquippa_rates <- read_excel("./Data/Raw/bond_data/os_PA5040006_Aliquippa.xlsx",
+                              sheet = "rates")
 ```
+
+## Lowest Quintile Income
+
+```{r}
+## Grab block groups for the system in question
+```
+
+## Household Size
+
+```{r}
+## For now, assume household size = 4
+HH_size <- 4 # people per household
+```
+
 
 ## Price of Basic Service
 
 ```{r}
 ## Monthly price of 5,000 gallons per month
+## Cost = flat meter fee + minimum + volumetric fee
+# conversion from gallons to cubic feet
+gal_to_CF <- 0.133681
+
+## test inputs for monthly price calculation
+PWS <- Schuylkill_rates
+Volume_gal_mon <- 5000 # gallons per month
+
+## Basic water service = 50 gal per person per day
+# Volume_gal_mon <- 50*365*HH_size/12
+Volume_CF_qtr <- Volume_gal_mon*3*gal_to_CF
+Volume_gal_qtr <- Volume_gal_mon*3
+Volume_CF_mon <- Volume_gal_mon*gal_to_CF
+
+## vector of volumes depending on cf or gallon
+MeterSize <- "0.625"
+
+## Flat portion of the price, based on the meter size
+flat_price <- PWS %>%
+  filter(class == MeterSize, chargeType == "Meter Size") %>%
+  ## copy cost column to new columns with name "flat_cost"
+  mutate(flat_cost = cost)
+
+## Volumetric portion of the cost
+volume_price <- PWS %>%
+  ## filter for consumption charges and water systems, not sewer
+  filter(grepl("consumption|minimum", charges, ignore.case = T),
+         grepl("water", WaterSewer, ignore.case = T)) %>%
+  ## first use replace to search for "over" or ">" and replace with 1e9
+  ## what to do with "residential" or locations?
+  mutate(class = as.numeric(replace(class,
+                                    grep("over|>", class, ignore.case = T),
+                                    "1000000000")),
+         ## create 0 volume at cost bracket column, to be filled in for loop
+         volume_at_cost = 0,
+         ## create column to convert monthly costs to annual costs,
+         ## changed to quarterly in for loop when the price is quarterly
+         annual_conversion_factor = 12) %>%
+  ## for now, remove rows with NA in class column
+  drop_na(class)
+
+## create numeric vector of unique rate years and get rid of NAs
+unique_years <- as.numeric(unique(volume_price$rateYear)) %>%
+  na.omit()
+
+## tester
+#year <- 2019
+#unique_years <- c(1990, 1991, 1995)
+
+## initialize empty final cost dataframe, to be filled by for loop of each unique rate year
+PWS_cost <- volume_price[FALSE,]
+
+for (year in unique_years) {
+  ## create new dataframe of only the year in question
+  PWS_year <- filter(volume_price, rateYear == year)
+                     ## filter again to grab the first otherClass
+  PWS_year <- filter(PWS_year, otherClass == first(otherClass))
+                    
+  ## search for gal or cf in classUnit
+  CF <- any(grep("cf", PWS_year$classUnit, ignore.case = T))
+  gal <- any(grepl("gal", PWS_year$classUnit, ignore.case = T))
+  ## search for qtr or mon in chargeType
+  quarter <- any(grepl("quarter|qtr", PWS_year$chargeType, ignore.case = T))
+  month <- any(grepl("mon", PWS_year$chargeType, ignore.case = T))
+  
+  ## volume in correct units
+  Volume <- Volume_CF_mon*CF*month + Volume_CF_qtr*CF*quarter +
+    Volume_gal_mon*gal*month + Volume_gal_qtr*gal*quarter
+  
+  ## change annual conversion factor to 4 if the charge is quarterly
+  PWS_year <- mutate(PWS_year,
+                     annual_conversion_factor = case_when(quarter ~ 4))
+  
+  ## calculate the volume of water in each price bracket/class
+  for (i in 1:length(PWS_year$class)) {
+    PWS_year$volume_at_cost[i] <- max(0, min(Volume,
+                                             PWS_year$class[i],
+                                             Volume - PWS_year$class[i-1],
+                                             PWS_year$class[i] - PWS_year$class[i-1]))
+  }
+  ## bind newly calculated year dataframe with existing PWS_cost dataframe
+  PWS_cost <- bind_rows(PWS_cost, PWS_year)
+}
+
+## Add cost unit magnitude column, extracting price per 100 CF or 1000 gal
+PWS_cost <- PWS_cost %>%
+  ## extract number from costUnit column
+  mutate(costUnitMagnitude = as.numeric(regmatches(costUnit,
+                                        gregexpr("[[:digit:]]+", costUnit))),
+         ## add and calculate total_cost column, just taking cost if charges contains minimum
+         total_cost = case_when(charges == "Minimum Bill" ~ cost,
+                                TRUE ~ volume_at_cost*cost/costUnitMagnitude),
+         ## add annual cost column
+         annual_cost = total_cost*annual_conversion_factor
+         )
+
+## this is currently the cost per billing period
+summary_cost <- PWS_cost %>%
+  group_by(rateYear, yearSet) %>%
+  summarize(periodic_cost = sum(total_cost),
+            annual_cost = sum(annual_cost)) %>%
+  group_by(yearSet) %>%
+  summarize(periodic_cost = first(periodic_cost),
+            annual_cost = first(annual_cost))
+  
+
+## plot
+flat_plot <- ggplot(flat_price) +
+  geom_col(aes(x = yearSet, y = cost))
+flat_plot
+
+volume_plot <- ggplot(summary_cost) +
+  geom_col(aes(x = yearSet, y = annual_cost)) +
+  labs(title = paste(PWS$name[1], " (5,000 gal)"), x = "Year Set", y = "Annual Cost (USD)")
+volume_plot
+
+## need to group by year and otherCost
+
+###########################################
+
+
+## Create a function
+Price <- function(PWS, Volume, MeterSize){
+  flat_price <- PWS %>%
+    filter(class == MeterSize, chargeType == "Meter Size")
+  volume_price <- PWS %>%
+    filter(charges = "Consumption Charge")
+  
+}
+
+## For each year
+Schuylkill_rates %>%
+  filter(class = "0.625")
+```
+
+## Household Burden Indicator
+
+```{r}
+# Cost of basic water service as percentage of lowest quintile income
+```
+
+## Poverty Prevalence Indicator
+
+```{r}
+# Percent of community households below 200% FPL
+FPL_2000 <- c(12760, 17240, 21720, 26200, 30680, 35160, 39640, 44120)
+FPL200_PWS <- 2*FPL_2000[HH_size]
 ```
 

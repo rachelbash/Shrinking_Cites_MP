@@ -24,6 +24,8 @@ Pittsburgh <- read_excel("./Data/Raw/bond_data/os_PA5020038_Pittsburgh.xlsx",
                          sheet = "fiscal")
 Johnstown <- read_excel("./Data/Raw/bond_data/os_PA4110034_Johnstown.xlsx",
                         sheet = "fiscal")
+Pottstown <- read_excel("./Data/Raw/bond_data/os_PA1460037_Pottstown.xlsx",
+                        sheet = "fiscal")
 
 ## Set plot theme
 WalkersTheme <- theme_bw(base_size = 12) +
@@ -166,4 +168,35 @@ Johnstown_plot <- ggplot(revenue_Johnstown) +
   #           linetype = "dotted", color = "red", size = 1) +
   labs(title = "Johnstown", fill = "")
 Johnstown_plot
+```
+
+### Pottstown
+
+```{r}
+#fix first row issue so that the column names are correct
+names(Pottstown) <- as.matrix(Pottstown[1, ])
+Pottstown <- Pottstown[-1, ]
+
+## subset total revenue and total expenses and net income
+revenue_Pottstown <- Pottstown %>%
+  ## get rid of sewer columns, those ending with s
+  select(-ends_with("s")) %>%
+  filter(SubCategory == "Total Operating Revenues" |
+           SubCategory == "Total Operating Expenses" |
+           SubCategory == "Net Income")
+## gather income and expenditure data
+revenue_Pottstown <- revenue_Pottstown %>%
+  gather("Year", "USD", 5:length(revenue_Pottstown)) %>%
+  # remove y from beginning of years and w from end of years
+  mutate(USD = as.numeric(USD),
+         Year = as.numeric(gsub("y","", gsub("w", "", Year))))
+
+## plot each of the three values over time
+Pottstown_plot <- ggplot(revenue_Pottstown) +
+  geom_col(aes(x = Year, y = USD, fill = SubCategory), position = "dodge") +
+  # years when systems were added
+  #geom_vline(xintercept = c(2010),
+  #           linetype = "dotted", color = "red", size = 1) +
+  labs(title = "Pottstown", fill = "")
+Pottstown_plot
 ```
