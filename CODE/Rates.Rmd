@@ -43,7 +43,7 @@ HH_size <- 4 # people per household
 gal_to_CF <- 0.133681
 
 ## test inputs for monthly price calculation
-PWS <- Schuylkill_rates
+PWS <- Aliquippa_rates
 Volume_gal_mon <- 5000 # gallons per month
 
 ## Basic water service = 50 gal per person per day
@@ -80,11 +80,11 @@ volume_price <- PWS %>%
   drop_na(class)
 
 ## create numeric vector of unique rate years and get rid of NAs
-unique_years <- as.numeric(unique(volume_price$rateYear)) %>%
+unique_years <- as.numeric(unique(volume_price$yearSet)) %>%
   na.omit()
 
 ## tester
-#year <- 2019
+year <- 2016
 #unique_years <- c(1990, 1991, 1995)
 
 ## initialize empty final cost dataframe, to be filled by for loop of each unique rate year
@@ -92,9 +92,14 @@ PWS_cost <- volume_price[FALSE,]
 
 for (year in unique_years) {
   ## create new dataframe of only the year in question
-  PWS_year <- filter(volume_price, rateYear == year)
-                     ## filter again to grab the first otherClass
-  PWS_year <- filter(PWS_year, otherClass == first(otherClass))
+  PWS_year <- filter(volume_price, yearSet == year)
+  ## filter again to grab only the earliest rateYear of the current yearSet
+  PWS_year <- filter(PWS_year, rateYear == first(rateYear))
+  ## filter again to grab the first otherClass if otherClass is not just NAs
+  ## this is in case the system has different rate structures for different parts of the service area
+  if (any(!is.na(PWS_year$otherClass))) {
+    PWS_year <- filter(PWS_year, otherClass == first(otherClass))
+  }
                     
   ## search for gal or cf in classUnit
   CF <- any(grep("cf", PWS_year$classUnit, ignore.case = T))
@@ -125,10 +130,13 @@ for (year in unique_years) {
 ## Add cost unit magnitude column, extracting price per 100 CF or 1000 gal
 PWS_cost <- PWS_cost %>%
   ## extract number from costUnit column
+  ## need to account for use of word "thousand"
   mutate(costUnitMagnitude = as.numeric(regmatches(costUnit,
                                         gregexpr("[[:digit:]]+", costUnit))),
-         ## add and calculate total_cost column, just taking cost if charges contains minimum
-         total_cost = case_when(charges == "Minimum Bill" ~ cost,
+         ## add and calculate total_cost column,
+         ## just taking cost if charges contains "minimum" or "flat"
+         total_cost = case_when(grepl("minimum|flat", charges, ignore.case = T) ~ cost,
+                                grepl("minimum|flat", costUnit, ignore.case = T) ~ cost,
                                 TRUE ~ volume_at_cost*cost/costUnitMagnitude),
          ## add annual cost column
          annual_cost = total_cost*annual_conversion_factor
