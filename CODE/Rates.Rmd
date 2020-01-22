@@ -12,6 +12,7 @@ knitr::opts_chunk$set(echo = FALSE, warning = FALSE)
 
 library(tidyverse)
 library(readxl)
+library(sf)
 
 ## Read in raw rates worksheets
 Schuylkill_rates <- read_excel("./Data/Raw/bond_data/os_PA3540038_Schuylkill.xlsx",
@@ -22,12 +23,71 @@ Aliquippa_rates <- read_excel("./Data/Raw/bond_data/os_PA5040006_Aliquippa.xlsx"
 Johnstown_rates <- read_excel("./Data/Raw/bond_data/os_PA4110034_Johnstown.xlsx",
                               sheet = "rates")
 
+## Income
+income_levels <- c("< 10", "10-20", "20-30", "30-40", "40-50", "50-60", "60-75",
+                   "75-100", "100-125", "125-150", "150-200", "> 200")
+PA_Income <- read.csv("Data/Processed/PA_Income_2017_Long.csv") %>%
+  mutate(GEOID = factor(GEOID),
+         Income_Range = factor(Income_Range, levels = income_levels))
+
+```
+
+## Inputs
+```{r}
+## Select Public Water System
+PWS <- Schuylkill_rates
+
+## Create income bracket cutoffs in a dataframe form that can be combined
+## with the income summary data
+Income_Low <- data.frame("Income_Low" = c(0, 10000, 20000, 30000, 40000, 50000, 60000,
+                75000, 100000, 125000, 150000, 200000))
+Income_High <- data.frame("Income_High" = c(10000, 20000, 30000, 40000, 50000, 60000,
+                 75000, 100000, 125000, 150000, 200000, 1e9))
 ```
 
 ## Lowest Quintile Income
 
 ```{r}
-## Grab block groups for the system in question
+## load Public Water System shapefile
+PWS_PA <- 
+  st_read("Data/Raw/PublicWaterSupply2019_04/PublicWaterSupply2019_04.shp") %>%
+  st_transform(6346)
+## Block Groups
+PA_BG <- st_read("Data/Raw/tl_2017_42_bg/tl_2017_42_bg.shp") %>%
+  st_transform(6346)
+
+## Filter primary system from PWS shapefile
+PWS_Primary <- filter(PWS_PA, PWS_ID == gsub("PA", "",PWS$PWSID[1]))
+
+## Filter the block groups for those intersecting the service area
+
+## create mask of block groups intersected by PWS_Primary
+BG_Primary_Mask <- st_intersects(PA_BG, PWS_Primary, sparse = F)
+
+## Now filter all block groups based on mask
+BG_Primary <- PA_BG[BG_Primary_Mask,]
+
+## filter Income data for block groups with GEOID %in% BG_Primary$GEOID
+PA_Income_Primary <- PA_Income %>%
+  filter(GEOID %in% BG_Primary$GEOID) %>%
+  group_by(Income_Range) %>%
+  summarize(HH_Sum = sum(Households)) %>%
+  bind_cols(Income_Low, Income_High) %>%
+  mutate(cumsum = cumsum(HH_Sum))
+  
+## Lowest Quintile Income
+LQI_Percentile <- 0.2
+
+LQI_HH_Index <- sum(PA_Income_Primary$HH_Sum)*LQI_Percentile
+
+LQI_cumsum_Index <- detect_index(PA_Income_Primary$cumsum, function(x) x > LQI_HH_Index)
+
+LQI <- approx(x = c(PA_Income_Primary$cumsum[LQI_cumsum_Index-1],
+             PA_Income_Primary$cumsum[LQI_cumsum_Index]),
+       y = c(PA_Income_Primary$Income_Low[LQI_cumsum_Index],
+             PA_Income_Primary$Income_High[LQI_cumsum_Index]),
+       xout = LQI_HH_Index)$y
+
 ```
 
 ## Household Size
@@ -47,7 +107,6 @@ HH_size <- 4 # people per household
 gal_to_CF <- 0.133681
 
 ## test inputs for monthly price calculation
-PWS <- Johnstown_rates
 Volume_gal_mon <- 5000 # gallons per month
 
 ## Basic water service = 50 gal per person per day
@@ -197,6 +256,7 @@ Schuylkill_rates %>%
 
 ```{r}
 # Cost of basic water service as percentage of lowest quintile income
+
 ```
 
 ## Poverty Prevalence Indicator
