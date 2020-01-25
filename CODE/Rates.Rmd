@@ -263,7 +263,7 @@ Schuylkill_rates %>%
 
 ```{r}
 # Percent of community households below 200% FPL
-FPL_2000 <- c(12760, 17240, 21720, 26200, 30680, 35160, 39640, 44120)
+FPL_2017 <- c(12060, 16240, 20420, 24600, 28780, 32960, 37140, 41320)
 FPL200_PWS <- 2*FPL_2000[HH_size]
 ```
 
