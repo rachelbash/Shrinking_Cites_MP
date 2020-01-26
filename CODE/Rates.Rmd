@@ -23,7 +23,18 @@ Aliquippa_rates <- read_excel("./Data/Raw/bond_data/os_PA5040006_Aliquippa.xlsx"
 Johnstown_rates <- read_excel("./Data/Raw/bond_data/os_PA4110034_Johnstown.xlsx",
                               sheet = "rates")
 
-## Income
+
+## load Public Water System shapefile
+PWS_PA <- 
+  st_read("Data/Raw/PublicWaterSupply2019_04/PublicWaterSupply2019_04.shp") %>%
+  st_transform(6346)
+
+## Load 2017 Block Groups Shapefile
+PA_BG <- st_read("Data/Raw/tl_2017_42_bg/tl_2017_42_bg.shp") %>%
+  st_transform(6346)
+
+
+## Read Processed Income csv
 income_levels <- c("< 10", "10-20", "20-30", "30-40", "40-50", "50-60", "60-75",
                    "75-100", "100-125", "125-150", "150-200", "> 200")
 PA_Income <- read.csv("Data/Processed/PA_Income_2017_Long.csv") %>%
@@ -43,19 +54,17 @@ Income_Low <- data.frame("Income_Low" = c(0, 10000, 20000, 30000, 40000, 50000, 
                 75000, 100000, 125000, 150000, 200000))
 Income_High <- data.frame("Income_High" = c(10000, 20000, 30000, 40000, 50000, 60000,
                  75000, 100000, 125000, 150000, 200000, 1e9))
+
+## Average household size for each utility
+#Schuylkill_HH <- 
+  
+## Use 50 gallons per person per day to estimate "basic use"
+## Maybe calculate average residential use for each utility to see actual use
 ```
 
 ## Lowest Quintile Income
 
 ```{r}
-## load Public Water System shapefile
-PWS_PA <- 
-  st_read("Data/Raw/PublicWaterSupply2019_04/PublicWaterSupply2019_04.shp") %>%
-  st_transform(6346)
-## Block Groups
-PA_BG <- st_read("Data/Raw/tl_2017_42_bg/tl_2017_42_bg.shp") %>%
-  st_transform(6346)
-
 ## Filter primary system from PWS shapefile
 PWS_Primary <- filter(PWS_PA, PWS_ID == gsub("PA", "",PWS$PWSID[1]))
 
@@ -78,10 +87,13 @@ PA_Income_Primary <- PA_Income %>%
 ## Lowest Quintile Income
 LQI_Percentile <- 0.2
 
+## Household "number" of 20th percentile home
 LQI_HH_Index <- sum(PA_Income_Primary$HH_Sum)*LQI_Percentile
 
+## index of the income bracket where the 20th percentile home falls
 LQI_cumsum_Index <- detect_index(PA_Income_Primary$cumsum, function(x) x > LQI_HH_Index)
 
+## calculate the 20th percentile income
 LQI <- approx(x = c(PA_Income_Primary$cumsum[LQI_cumsum_Index-1],
              PA_Income_Primary$cumsum[LQI_cumsum_Index]),
        y = c(PA_Income_Primary$Income_Low[LQI_cumsum_Index],
@@ -95,6 +107,7 @@ LQI <- approx(x = c(PA_Income_Primary$cumsum[LQI_cumsum_Index-1],
 ```{r}
 ## For now, assume household size = 4
 HH_size <- 4 # people per household
+water_use <- 50 # gallons per person per day
 ```
 
 
@@ -107,7 +120,7 @@ HH_size <- 4 # people per household
 gal_to_CF <- 0.133681
 
 ## test inputs for monthly price calculation
-Volume_gal_mon <- 5000 # gallons per month
+Volume_gal_mon <- HH_size*water_use*365/12 # gallons per household per month
 
 ## Basic water service = 50 gal per person per day
 # Volume_gal_mon <- 50*365*HH_size/12
@@ -147,7 +160,7 @@ unique_years <- as.numeric(unique(volume_price$yearSet)) %>%
   na.omit()
 
 ## tester
-year <- 2009
+#year <- 2009
 #unique_years <- c(1990, 1991, 1995)
 
 ## initialize empty final cost dataframe, to be filled by for loop of each unique rate year
@@ -256,7 +269,8 @@ Schuylkill_rates %>%
 
 ```{r}
 # Cost of basic water service as percentage of lowest quintile income
-
+## need to make output a number, not a dataframe
+HBI <- as.numeric(summary_cost[4,"annual_cost"]/LQI *100) ## percent
 ```
 
 ## Poverty Prevalence Indicator
@@ -264,6 +278,18 @@ Schuylkill_rates %>%
 ```{r}
 # Percent of community households below 200% FPL
 FPL_2017 <- c(12060, 16240, 20420, 24600, 28780, 32960, 37140, 41320)
-FPL200_PWS <- 2*FPL_2000[HH_size]
+FPL200_PWS <- 2*FPL_2017[HH_size]
+
+## Search income statistics for first Income_High > FPL200_PWS
+Income_Bracket_Index <- detect_index(PA_Income_Primary$Income_High, function(x) x > FPL200_PWS)
+## evenly spread the households in that income bracket across the bracket
+Income_bracket <- approx(x = c(PA_Income_Primary$Income_Low[Income_Bracket_Index],
+                               PA_Income_Primary$Income_High[Income_Bracket_Index]),
+                         n = PA_Income_Primary$HH_Sum[Income_Bracket_Index])
+## Find the index of the income closest to FPL200_PWS
+PPI_Index <- detect_index(Income_bracket$y, function(x) x > FPL200_PWS)
+## Add PPI_Index to the cumulative sum of the row before Income_Bracket_Index
+Total_HH_number <- sum(PA_Income_Primary$HH_Sum)
+PPI <- (PPI_Index + PA_Income_Primary$cumsum[Income_Bracket_Index-1])/Total_HH_number*100
 ```
 
