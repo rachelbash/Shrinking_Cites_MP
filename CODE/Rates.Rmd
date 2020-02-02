@@ -13,15 +13,40 @@ knitr::opts_chunk$set(echo = FALSE, warning = FALSE)
 library(tidyverse)
 library(readxl)
 library(sf)
+library(cowplot)
 
-## Read in raw rates worksheets
-Schuylkill_rates <- read_excel("./Data/Raw/bond_data/os_PA3540038_Schuylkill.xlsx",
-                               sheet = "rates")
-Aliquippa_rates <- read_excel("./Data/Raw/bond_data/os_PA5040006_Aliquippa.xlsx",
-                              sheet = "rates")
-## Johnstown's rates formatted differently than the others after 1998
-Johnstown_rates <- read_excel("./Data/Raw/bond_data/os_PA4110034_Johnstown.xlsx",
-                              sheet = "rates")
+## create list of bond data file names
+bond_list <- list.files("./DATA/RAW/bond_data")
+# The names of the dataframes will be the 14th character to the period, or -5th character
+rates_data <- lapply(paste("./DATA/RAW/bond_data", bond_list, sep = "/"),
+                     read_excel, sheet = "rates")
+
+Falls <- rates_data[[1]]
+Chester <- rates_data[[2]]
+NorthPenn <- rates_data[[3]]
+Pottstown <- rates_data[[4]]
+Hazleton <- rates_data[[5]]
+ReadingArea <- rates_data[[6]]
+Schuylkill <- rates_data[[7]]
+Altoona <- rates_data[[8]]
+Johnstown <- rates_data[[9]]
+Williamsport <- rates_data[[10]]
+Lewistown <- rates_data[[11]]
+Pittsburgh <- rates_data[[12]]
+Aliquippa <- rates_data[[13]]
+Charleroi <- rates_data[[14]]
+Dubois <- rates_data[[15]]
+StMarys <- rates_data[[16]]
+Carlisle <- rates_data[[17]]
+
+# ## Read in raw rates worksheets
+# Schuylkill_rates <- read_excel("./Data/Raw/bond_data/os_PA3540038_Schuylkill.xlsx",
+#                                sheet = "rates")
+# Aliquippa_rates <- read_excel("./Data/Raw/bond_data/os_PA5040006_Aliquippa.xlsx",
+#                               sheet = "rates")
+# ## Johnstown's rates formatted differently than the others after 1998
+# Johnstown_rates <- read_excel("./Data/Raw/bond_data/os_PA4110034_Johnstown.xlsx",
+#                               sheet = "rates")
 
 
 ## load Public Water System shapefile
@@ -46,7 +71,7 @@ PA_Income <- read.csv("Data/Processed/PA_Income_2017_Long.csv") %>%
 ## Inputs
 ```{r}
 ## Select Public Water System
-PWS <- Schuylkill_rates
+PWS <- Carlisle
 
 ## Create income bracket cutoffs in a dataframe form that can be combined
 ## with the income summary data
@@ -66,7 +91,11 @@ Income_High <- data.frame("Income_High" = c(10000, 20000, 30000, 40000, 50000, 6
 
 ```{r}
 ## Filter primary system from PWS shapefile
-PWS_Primary <- filter(PWS_PA, PWS_ID == gsub("PA", "",PWS$PWSID[1]))
+## There is an error with the Hazleton PWSID, so search for 2408001
+## Dubois has no rates information, so search manually for 6170016
+#PWS_Primary <- filter(PWS_PA, PWS_ID == 2408001)
+#PWS_Primary <- filter(PWS_PA, PWS_ID == 6170016)
+PWS_Primary <- filter(PWS_PA, PWS_ID == gsub("PA", "",PWS$PWSID[2]))
 
 ## Filter the block groups for those intersecting the service area
 
@@ -105,15 +134,10 @@ LQI <- approx(x = c(PA_Income_Primary$cumsum[LQI_cumsum_Index-1],
 ## Household Size
 
 ```{r}
-## For now, assume household size = 4
-HH_size <- 4 # people per household
+## The average household size for pennsylvania in 2020 is 2.5, so will round up to 3
+HH_size <- 3 # people per household
 water_use <- 50 # gallons per person per day
-```
 
-
-## Price of Basic Service
-
-```{r}
 ## Monthly price of 5,000 gallons per month
 ## Cost = flat meter fee + minimum + volumetric fee
 # conversion from gallons to cubic feet
@@ -129,11 +153,62 @@ Volume_gal_qtr <- Volume_gal_mon*3
 Volume_CF_mon <- Volume_gal_mon*gal_to_CF
 
 ## Meter size for some flat rates
-MeterSize <- "0.625"
+MeterSize_dec <- 0.625
+MeterSize_char <- "5/8"
+```
 
+## Poverty Prevalence Indicator
+
+```{r}
+# Percent of community households below 200% FPL
+FPL_2017 <- c(12060, 16240, 20420, 24600, 28780, 32960, 37140, 41320)
+FPL200_PWS <- 2*FPL_2017[HH_size]
+
+## Search income statistics for first Income_High > FPL200_PWS
+Income_Bracket_Index <- detect_index(PA_Income_Primary$Income_High, function(x) x > FPL200_PWS)
+## evenly spread the households in that income bracket across the bracket
+Income_bracket <- approx(x = c(PA_Income_Primary$Income_Low[Income_Bracket_Index],
+                               PA_Income_Primary$Income_High[Income_Bracket_Index]),
+                         n = PA_Income_Primary$HH_Sum[Income_Bracket_Index])
+## Find the index of the income closest to FPL200_PWS
+PPI_Index <- detect_index(Income_bracket$y, function(x) x > FPL200_PWS)
+## Add PPI_Index to the cumulative sum of the row before Income_Bracket_Index
+Total_HH_number <- sum(PA_Income_Primary$HH_Sum)
+PPI <- (PPI_Index + PA_Income_Primary$cumsum[Income_Bracket_Index-1])/Total_HH_number*100
+```
+
+## Price of Basic Service
+
+```{r}
+## try combining flat and volumetric charges in one dplyr
+## keep flat, minimum, and consumption charges and get rid of hydrant
+price <- PWS %>%
+  filter(
+  ## water and not sewer
+         grepl("water", WaterSewer, ignore.case = T),
+  ## flat or meter and consumption charges
+         grepl("meter|flat|consumption", chargeType, ignore.case = T),
+         grepl("meter|flat|consumption", charges, ignore.case = T),
+  ## does not contain fire or hydrant or resale in chargeType or charges
+         !grepl("fire|hydrant|resale", chargeType, ignore.case = T),
+         !grepl("fire|hydrant|resale", charges, ignore.case = T),
+         !grepl("one", billFrequency, ignore.case = T)
+         )
+  
+```
+
+
+```{r}
 ## Flat portion of the price, based on the meter size
+## Step 1: identify flat costs
 flat_price <- PWS %>%
-  filter(class == MeterSize, chargeType == "Meter Size") %>%
+  ## flat or meter in chargeType or charges
+  filter(grepl("meter|flat", chargeType, ignore.case = T),
+         grepl("meter|flat", charges, ignore.case = T),
+  ## does not caontain fire or hydrant in chargeType or charges
+         !grepl("fire|hydrant", chargeType, ignore.case = T),
+         !grepl("fire|hydrant", charges, ignore.case = T)
+         ) %>%
   ## copy cost column to new columns with name "flat_cost"
   mutate(flat_cost = cost)
 
@@ -146,7 +221,7 @@ volume_price <- PWS %>%
   ## what to do with "residential" or locations?
   mutate(class = as.numeric(replace(class,
                                     grep("over|>", class, ignore.case = T),
-                                    "1000000000")),
+                                    "1000000000000")),
          ## create 0 volume at cost bracket column, to be filled in for loop
          volume_at_cost = 0,
          ## create column to convert monthly costs to annual costs,
@@ -160,7 +235,7 @@ unique_years <- as.numeric(unique(volume_price$yearSet)) %>%
   na.omit()
 
 ## tester
-#year <- 2009
+year <- 2003
 #unique_years <- c(1990, 1991, 1995)
 
 ## initialize empty final cost dataframe, to be filled by for loop of each unique rate year
@@ -168,9 +243,11 @@ PWS_cost <- volume_price[FALSE,]
 
 for (year in unique_years) {
   ## create new dataframe of only the year in question
+  ## for Falls, use rateYear instead of yearSet, which are all NA
   PWS_year <- filter(volume_price, yearSet == year)
+  #PWS_year <- filter(volume_price, rateYear == year)
   ## filter again to grab only the earliest rateYear of the current yearSet
-  PWS_year <- filter(PWS_year, rateYear == first(rateYear))
+  PWS_year <- filter(PWS_year, rateYear == last(rateYear))
   ## filter again to grab the first otherClass if otherClass is not just NAs
   ## this is in case the system has different rate structures for different parts of the service area
   if (any(!is.na(PWS_year$otherClass))) {
@@ -181,7 +258,8 @@ for (year in unique_years) {
   CF <- any(grep("cf", PWS_year$classUnit, ignore.case = T))
   gal <- any(grepl("gal", PWS_year$classUnit, ignore.case = T))
   ## search for qtr or mon in chargeType
-  quarter <- any(grepl("quarter|qtr", PWS_year$chargeType, ignore.case = T))
+  quarter <- any(grepl("quarter|qtr", PWS_year$chargeType, ignore.case = T),
+                 grepl("quarter|qtr", PWS_year$billFrequency, ignore.case = T))
   month <- any(grepl("mon", PWS_year$chargeType, ignore.case = T))
   
   ## volume in correct units
@@ -221,7 +299,7 @@ PWS_cost <- PWS_cost %>%
          annual_cost = total_cost*annual_conversion_factor
          )
 
-## this is currently the cost per billing period
+## summary cost with annual cost for each rate structure
 summary_cost <- PWS_cost %>%
   group_by(rateYear, yearSet) %>%
   summarize(periodic_cost = sum(total_cost),
@@ -248,21 +326,35 @@ volume_plot
 ###########################################
 ```
 
-
+## Unique Systems
 
 ```{r}
-## Create a function
-Price <- function(PWS, Volume, MeterSize){
-  flat_price <- PWS %>%
-    filter(class == MeterSize, chargeType == "Meter Size")
-  volume_price <- PWS %>%
-    filter(charges = "Consumption Charge")
-  
+## Falls
+## search for gal or cf in classUnit
+CF <- any(grep("cf", PWS_year$classUnit, ignore.case = T))
+gal <- any(grepl("gal", PWS_year$classUnit, ignore.case = T))
+## search for qtr or mon in chargeType
+quarter <- any(grepl("quarter|qtr", PWS_year$chargeType, ignore.case = T),
+               grepl("quarter|qtr", PWS_year$billFrequency, ignore.case = T))
+month <- any(grepl("mon", PWS_year$chargeType, ignore.case = T))
+volume <-
+price <- function(PWS, Volume_gal_mon) {
+  Falls_price <- Falls %>%
+    filter(OSYear == 2004, rateYear == 2003,
+           grepl("consumption", charges, ignore.case = T) |
+             class == as.character(MeterSize_dec))
+    mutate(volume_total = ,
+           volume_at_cost = case_when(grepl("flat|minimum", charges, ignore.case = T) ~
+                                        gallonsIncluded,
+                                      TRUE ~ volume - lag(gallonsIncluded, 1)),
+           costUnit = gsub("thousand", "1000", costUnit, ignore.case = T),
+           costUnit = gsub("hundred", "100", costUnit, ignore.case = T),
+           costUnitMagnitude = as.numeric(regmatches(costUnit,
+                                          gregexpr("[[:digit:]]+", costUnit))),
+           periodic_cost = case_when(grepl("flat|minimum", costUnit, ignore.case = T) ~ cost,
+                                     TRUE ~ cost/costUnitMagnitude),
+           )
 }
-
-## For each year
-Schuylkill_rates %>%
-  filter(class = "0.625")
 ```
 
 ## Household Burden Indicator
@@ -273,23 +365,91 @@ Schuylkill_rates %>%
 HBI <- as.numeric(summary_cost[4,"annual_cost"]/LQI *100) ## percent
 ```
 
-## Poverty Prevalence Indicator
+## Affordability Summary
 
 ```{r}
-# Percent of community households below 200% FPL
-FPL_2017 <- c(12060, 16240, 20420, 24600, 28780, 32960, 37140, 41320)
-FPL200_PWS <- 2*FPL_2017[HH_size]
+# ## Put indicator data into a summary dataframe for all utilities
+# ## Initialize summary affordability dataframe
+# Affordability_names <- c("PWSID", "PWS_Name", "Year_Set", "Monthly_Volume", "Monthly_Cost",
+#                          "Annual_Cost", "LQI", "HBI", "PPI")
+# Affordability <- data.frame(matrix(ncol = length(Affordability_names), nrow = 0))
+# colnames(Affordability) <- Affordability_names
+# 
+# ## Fill affordability dataframe with numbers
+# Affordability_Row <- data.frame(c(PWS$PWSID[1], PWS$name[1], , , ,
+#                                   , LQI, HBI, PPI), nrow = 1)
+# Affordability <- bind_rows(Affordability, Affordability_Row)
 
-## Search income statistics for first Income_High > FPL200_PWS
-Income_Bracket_Index <- detect_index(PA_Income_Primary$Income_High, function(x) x > FPL200_PWS)
-## evenly spread the households in that income bracket across the bracket
-Income_bracket <- approx(x = c(PA_Income_Primary$Income_Low[Income_Bracket_Index],
-                               PA_Income_Primary$Income_High[Income_Bracket_Index]),
-                         n = PA_Income_Primary$HH_Sum[Income_Bracket_Index])
-## Find the index of the income closest to FPL200_PWS
-PPI_Index <- detect_index(Income_bracket$y, function(x) x > FPL200_PWS)
-## Add PPI_Index to the cumulative sum of the row before Income_Bracket_Index
-Total_HH_number <- sum(PA_Income_Primary$HH_Sum)
-PPI <- (PPI_Index + PA_Income_Primary$cumsum[Income_Bracket_Index-1])/Total_HH_number*100
+Affordability <- read_excel("./DATA/PROCESSED/Affordability.xlsx", na = "NA") %>%
+  mutate(Customer_Assistance_Program = as.factor(Customer_Assistance_Program))
+
+
+## make similar data frame where PPI_2017 is divided by 12 for plotting on secondary axis
+Affordability_secondary <- Affordability %>%
+  ## gather HBI and PPI into one column
+  gather(key = "metric", value = "metric_value", 8:9) %>%
+  mutate(metric_value = case_when(metric == "PPI_2017" ~ metric_value/12,
+                                  TRUE ~ metric_value))
+
+## colors for plot
+mycolors <- c("HBI" = "#fc8d62", "PPI_2017" = "#66c2a5")
+  
+## Separate HBI and PPI graphs
+## HBI Plot
+HBI_plot <- ggplot(Affordability,aes(x = Name, y = HBI)) +
+  geom_col(fill = mycolors["HBI"]) +
+  ## horizontal line of burden level cutoffs
+  geom_hline(yintercept = 0.035, linetype = "dashed", color = "red") +
+  geom_hline(yintercept = 0.05, linetype = "dashed", color = "red") +
+  labs(y = "Household Burden Index") +
+  ## y text as percentages instead of decimals
+  scale_y_continuous(#breaks = seq(-pop_max_round(), pop_max_round(), step_size()),
+                     labels = c("0", "1%", "2%", "3%", "4%", "5%")) +
+  ## no x axis title, text slanted 45 degrees
+  theme(axis.title.x = element_blank(),
+        axis.text.x = element_blank(),
+        axis.ticks.x = element_blank())
+HBI_plot
+
+## PPI plot
+PPI_plot <- ggplot(Affordability,aes(x = Name, y = PPI_2017)) +
+  geom_col(fill = mycolors["PPI_2017"]) +
+  geom_hline(yintercept = 0.2, linetype = "dashed", color = "red") +
+  geom_hline(yintercept = 0.35, linetype = "dashed", color = "red") +
+  labs(y = "Poverty Prevalence Index") +
+  coord_cartesian(ylim = c(0,0.6)) +
+  ## y text as percentages instead of decimals
+  scale_y_continuous(breaks = seq(0, 0.6, 0.2),
+                     labels = c("0", "20%", "40%", "60%")) +
+  ## no x axis title, text slanted 45 degrees
+  theme(axis.title.x = element_blank(),
+        axis.text.x = element_text(angle = 45, hjust = 1))
+PPI_plot
+
+HBI_PPI_stack <- plot_grid(HBI_plot, PPI_plot, ncol = 1, align = "v", rel_heights = c(1, 1.3))
+HBI_PPI_stack
+
+## HBI and PPI on one graph
+HBI_PPI_plot <- ggplot(Affordability_secondary,
+                       aes(x = Name, y = metric_value, group = metric, fill = metric)) +
+  geom_col(position = "dodge") +
+  scale_y_continuous(name="Household Burden Index",
+                     labels = c("0", "1%", "2%", "3%", "4%", "5%"),
+                     sec.axis = sec_axis(~ 12*., name="Poverty Prevalence Index",
+                                         breaks = seq(0, 0.6, 0.2),
+                                         labels = c("0", "20%", "40%", "60%"))) +
+  coord_cartesian(ylim = c(0, 0.05)) +
+  #scale_color_manual(name="Metric", values = mycolors) +
+  theme(axis.title.y = element_text(color = mycolors["HBI"]),
+        axis.text.y = element_text(color = mycolors["HBI"]),
+        axis.title.y.right = element_text(color = mycolors["PPI_2017"]),
+        axis.text.y.right = element_text(color = mycolors["PPI_2017"]),
+        axis.text.x = element_text(angle = 45, hjust = 1),
+        axis.title.x = element_blank(),
+        legend.position = "none") +
+  ## fill colors
+  scale_fill_manual(values = mycolors)
+HBI_PPI_plot
+
 ```
 
