@@ -1,0 +1,95 @@
+---
+title: "Pennsylvania SDWIS Violations"
+author: "Walker Grimshaw"
+date: "2/4/2020"
+output: pdf_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, warning = FALSE)
+
+library(tidyverse)
+library(readxl)
+library(lubridate)
+```
+
+## Read in SDWIS Violation Data
+
+```{r}
+## Raw violations data
+SDWIS_viol_raw <- read.csv("../DATA/RAW/PAPWSID_SDWIS_Violation.csv")
+
+## Pennvesst data
+Pennvest <- read_excel("../DATA/RAW/PA_Pennvest_Loans_and_Grants.xlsx")
+```
+
+## Clean Data
+
+```{r}
+## create PWSID and PWS_Name dataframe from Pennvest data
+Shrinking_Names <- Pennvest %>%
+  select(PWSID, SystemName) %>%
+  distinct()
+
+## Clean violations data
+SDWIS_shrinking <- SDWIS_viol_raw %>%
+  ## remove "VIOLATION." from the name of each column
+  rename_all(funs(gsub("VIOLATION.", "", names(SDWIS_viol_raw)))) %>%
+  ## remove indexing column and last columns that is just NAs
+  select(-X.1,-X) %>%
+  ## filter for only the systems we are looking at
+  filter(PWSID %in% Shrinking_Names$PWSID) %>%
+  ## change start date and end date to dates
+  mutate(COMPL_PER_BEGIN_DATE = as.Date(COMPL_PER_BEGIN_DATE, format = "%d-%b-%y"),
+         COMPL_PER_END_DATE = as.Date(COMPL_PER_END_DATE, format = "%d-%b-%y")) %>%
+  ## add year column
+  mutate(Year = year(COMPL_PER_BEGIN_DATE)) %>%
+  ## add system name column
+  left_join(Shrinking_Names, by = "PWSID")
+
+## Total Violations by type
+SDWIS_Type <- SDWIS_shrinking %>%
+  group_by(PWSID, CATEGORY_CODE) %>%
+  summarize(count = n())
+
+## Total Violations by Health
+SDWIS_Health <- SDWIS_shrinking %>%
+  group_by(PWSID, IS_HEALTH_BASED_IND) %>%
+  summarize(count = n())
+
+## Annual Violations
+SDWIS_Annual <- SDWIS_shrinking %>%
+  group_by(PWSID, Year) %>%
+  summarize(count = n())
+
+```
+
+## Total Violations
+
+```{r}
+## Category Code
+SDWIS_Type_plot <- ggplot(SDWIS_Type, aes(x = PWSID, y = count, fill = CATEGORY_CODE)) +
+  geom_col()
+SDWIS_Type_plot
+
+## Is health based
+SDWIS_Health_plot <- ggplot(SDWIS_Health,
+                            aes(x = PWSID, y = count, fill = IS_HEALTH_BASED_IND)) +
+  geom_col()
+SDWIS_Health_plot
+
+## Over time
+SDWIS_Annual_plot <- ggplot(SDWIS_Annual, aes(x = Year, y = count, color = PWSID)) +
+  geom_point()
+SDWIS_Annual_plot
+```
+
+
+## Health Based Violations
+
+```{r}
+
+```
+
