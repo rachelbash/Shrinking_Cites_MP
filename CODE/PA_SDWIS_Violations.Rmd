@@ -13,16 +13,17 @@ knitr::opts_chunk$set(echo = FALSE, warning = FALSE)
 library(tidyverse)
 library(readxl)
 library(lubridate)
+library(plotly)
 ```
 
 ## Read in SDWIS Violation Data
 
 ```{r}
 ## Raw violations data
-SDWIS_viol_raw <- read.csv("../DATA/RAW/PAPWSID_SDWIS_Violation.csv")
+SDWIS_viol_raw <- read.csv("./DATA/RAW/PAPWSID_SDWIS_Violation.csv")
 
 ## Pennvesst data
-Pennvest <- read_excel("../DATA/RAW/PA_Pennvest_Loans_and_Grants.xlsx")
+Pennvest <- read_excel("./DATA/RAW/PA_Pennvest_Loans_and_Grants.xlsx")
 ```
 
 ## Clean Data
@@ -33,7 +34,21 @@ Shrinking_Names <- Pennvest %>%
   select(PWSID, SystemName) %>%
   distinct()
 
-## Clean violations data
+## clean the whole database
+SDWIS_viol_clean <- SDWIS_viol_raw %>%
+  ## remove "VIOLATION." from the name of each column
+  rename_all(funs(gsub("VIOLATION.", "", names(SDWIS_viol_raw)))) %>%
+  ## remove indexing column and last columns that is just NAs
+  select(-X.1,-X) %>%
+  ## filter for only PA systems
+  filter(PRIMACY_AGENCY_CODE == "PA") %>%
+  ## change start date and end date to dates
+  mutate(COMPL_PER_BEGIN_DATE = as.Date(COMPL_PER_BEGIN_DATE, format = "%d-%b-%y"),
+         COMPL_PER_END_DATE = as.Date(COMPL_PER_END_DATE, format = "%d-%b-%y")) %>%
+  ## add year column
+  mutate(Year = year(COMPL_PER_BEGIN_DATE))
+
+## Shrinking Cities violations data
 SDWIS_shrinking <- SDWIS_viol_raw %>%
   ## remove "VIOLATION." from the name of each column
   rename_all(funs(gsub("VIOLATION.", "", names(SDWIS_viol_raw)))) %>%
@@ -52,17 +67,31 @@ SDWIS_shrinking <- SDWIS_viol_raw %>%
 ## Total Violations by type
 SDWIS_Type <- SDWIS_shrinking %>%
   group_by(PWSID, CATEGORY_CODE) %>%
-  summarize(count = n())
+  summarize(count = n(), SystemName = first(SystemName))
 
 ## Total Violations by Health
-SDWIS_Health <- SDWIS_shrinking %>%
-  group_by(PWSID, IS_HEALTH_BASED_IND) %>%
+SDWIS_Health <- filter(SDWIS_viol_clean, IS_HEALTH_BASED_IND == "Y") %>%
+  group_by(PWSID, Year) %>%
   summarize(count = n())
+
+## Shrinking City Health Based Violations
+SDWIS_Shrinking_Health <- filter(SDWIS_shrinking, IS_HEALTH_BASED_IND == "Y") %>%
+  group_by(SystemName, Year) %>%
+  summarize(count = n())
+
+## Just Major Violations
+SDWIS_Shrinking_Major <- SDWIS_shrinking %>%
+  filter(IS_MAJOR_VIOL_IND == "Y") %>%
+  mutate(RULE_CODE = as.factor(RULE_CODE))
 
 ## Annual Violations
 SDWIS_Annual <- SDWIS_shrinking %>%
   group_by(PWSID, Year) %>%
-  summarize(count = n())
+  summarize(count = n(), SystemName = first(SystemName))
+
+## Annual Health Based Violations
+SDWIS_Annual_Health <- SDWIS_shrinking %>%
+  filter(IS_HEALTH_BASED_IND == "Y" | IS_MAJOR_VIOL_IND == "Y")
 
 ```
 
@@ -70,26 +99,48 @@ SDWIS_Annual <- SDWIS_shrinking %>%
 
 ```{r}
 ## Category Code
-SDWIS_Type_plot <- ggplot(SDWIS_Type, aes(x = PWSID, y = count, fill = CATEGORY_CODE)) +
+SDWIS_Type_plot <- ggplot(SDWIS_Type, aes(x = SystemName, y = count, fill = CATEGORY_CODE)) +
   geom_col()
 SDWIS_Type_plot
-
-## Is health based
-SDWIS_Health_plot <- ggplot(SDWIS_Health,
-                            aes(x = PWSID, y = count, fill = IS_HEALTH_BASED_IND)) +
-  geom_col()
-SDWIS_Health_plot
+ggplotly(SDWIS_Type_plot)
 
 ## Over time
-SDWIS_Annual_plot <- ggplot(SDWIS_Annual, aes(x = Year, y = count, color = PWSID)) +
+SDWIS_Annual_plot <- ggplot(SDWIS_Annual, aes(x = Year, y = count, color = SystemName)) +
   geom_point()
 SDWIS_Annual_plot
+ggplotly(SDWIS_Annual_plot)
+
+
 ```
 
 
 ## Health Based Violations
 
 ```{r}
+## compare shrinking distribution to total distribution
+Health_Comparison_Plot <- ggplot() +
+  geom_boxplot(data = SDWIS_Health,aes(group = Year, y = count, x = Year)) +
+  geom_point(data = SDWIS_Shrinking_Health,
+               aes(color = SystemName, y = count, x = Year))
+ggplotly(Health_Comparison_Plot)
 
+
+## Is health based
+SDWIS_Health_plot <- ggplot(SDWIS_Shrinking_Health,
+                            aes(x = SystemName, fill = IS_HEALTH_BASED_IND)) +
+  geom_bar()
+SDWIS_Health_plot
+ggplotly(SDWIS_Health_plot)
+
+
+```
+
+## Major Violations
+
+```{r}
+Major_Violations_plot <- ggplot(SDWIS_Shrinking_Major) +
+  geom_bar(aes(x = SystemName)) +
+  labs(title = "Major Violations")
+ggplotly(Major_Violations_plot)
 ```
 
