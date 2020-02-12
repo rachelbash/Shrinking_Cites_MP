@@ -22,19 +22,20 @@ library(plotly)
 ## Raw violations data
 SDWIS_viol_raw <- read.csv("./DATA/RAW/PAPWSID_SDWIS_Violation.csv")
 
-## Pennvesst data
+## Raw Enforcement Action data
+SDWIS_Enforcement_Raw <- read.csv("./DATA/RAW/PAPWSID_SDWIS_Enforcement_Action.csv")
+
+## Raw violation enforcement assoc
+SDWIS_Assoc <- read.csv("./DATA/RAW/PAPWSID_SDWIS_Violation_Enf_Assoc.csv")
+
+## Pennvest data
 Pennvest <- read_excel("./DATA/RAW/PA_Pennvest_Loans_and_Grants.xlsx")
 ```
 
-## Clean Data
+## Clean Violations Data
 
 ```{r}
-## create PWSID and PWS_Name dataframe from Pennvest data
-Shrinking_Names <- Pennvest %>%
-  select(PWSID, SystemName) %>%
-  distinct()
-
-## clean the whole database
+## clean the whole violations database
 SDWIS_viol_clean <- SDWIS_viol_raw %>%
   ## remove "VIOLATION." from the name of each column
   rename_all(funs(gsub("VIOLATION.", "", names(SDWIS_viol_raw)))) %>%
@@ -44,25 +45,76 @@ SDWIS_viol_clean <- SDWIS_viol_raw %>%
   filter(PRIMACY_AGENCY_CODE == "PA") %>%
   ## change start date and end date to dates
   mutate(COMPL_PER_BEGIN_DATE = as.Date(COMPL_PER_BEGIN_DATE, format = "%d-%b-%y"),
-         COMPL_PER_END_DATE = as.Date(COMPL_PER_END_DATE, format = "%d-%b-%y")) %>%
+         COMPL_PER_END_DATE = as.Date(COMPL_PER_END_DATE, format = "%d-%b-%y"),
+         RTC_DATE = as.Date(RTC_DATE, format = "%d-%b-%y")) %>%
   ## add year column
-  mutate(Year = year(COMPL_PER_BEGIN_DATE))
+  mutate(Year = year(COMPL_PER_BEGIN_DATE),
+         ## Add Severity Index Column
+         Severity_Index = case_when(IS_HEALTH_BASED_IND == "Y" ~ 10,
+                                    IS_MAJOR_VIOL_IND == "Y" ~ 1,
+                                    TRUE ~ 0))
+
+```
+
+## Clean Enforcement Action Data
+
+```{r}
+SDWIS_Enforcement_Clean <- SDWIS_Enforcement_Raw %>%
+  ## remove "Enforcement action." from the beginning of each column name
+  rename_all(funs(gsub("ENFORCEMENT_ACTION.", "", names(SDWIS_Enforcement_Raw)))) %>%
+  ## remove first and last columns with no information
+  select(-X.1, -X) %>%
+  ## filter for only PA systems
+  filter(grepl("PA", PWSID)) %>%
+  ## change Enforcement Date to be a date
+  mutate(ENFORCEMENT_DATE = as.Date(ENFORCEMENT_DATE, format = "%d-%b-%y"))
+  
+```
+
+## Cities of Interest
+
+```{r}
+## create PWSID and PWS_Name dataframe from Pennvest data
+Struggling_Names <- Pennvest %>%
+  select(PWSID, SystemName) %>%
+  distinct()
 
 ## Shrinking Cities violations data
-SDWIS_shrinking <- SDWIS_viol_raw %>%
-  ## remove "VIOLATION." from the name of each column
-  rename_all(funs(gsub("VIOLATION.", "", names(SDWIS_viol_raw)))) %>%
-  ## remove indexing column and last columns that is just NAs
-  select(-X.1,-X) %>%
+SDWIS_Struggling <- SDWIS_viol_clean %>%
   ## filter for only the systems we are looking at
-  filter(PWSID %in% Shrinking_Names$PWSID) %>%
-  ## change start date and end date to dates
-  mutate(COMPL_PER_BEGIN_DATE = as.Date(COMPL_PER_BEGIN_DATE, format = "%d-%b-%y"),
-         COMPL_PER_END_DATE = as.Date(COMPL_PER_END_DATE, format = "%d-%b-%y")) %>%
-  ## add year column
-  mutate(Year = year(COMPL_PER_BEGIN_DATE)) %>%
+  filter(PWSID %in% Struggling_Names$PWSID) %>%
   ## add system name column
-  left_join(Shrinking_Names, by = "PWSID")
+  left_join(Struggling_Names, by = "PWSID") %>%
+  left_join(SDWIS_Enforcement_Clean,
+            by = c("PWSID" = "PWSID", "LATEST_ENFORCEMENT_ID" = "ENFORCEMENT_ID")) %>%
+  ## Add the word enforcement to the type_code column
+  mutate(ENFORCEMENT_TYPE_CODE = TYPE_CODE) %>%
+  ## drop type_code
+  select(-TYPE_CODE, -ORIGINATOR_CODE.y) %>%
+  ## add column of time between violation and return to compliance
+  mutate(Noncompliance_Time = difftime(COMPL_PER_BEGIN_DATE, RTC_DATE, units = "days"))
+
+```
+
+## Summary Tables
+
+``` {r}
+## Shrinking Cities Severity Index
+Struggling_Severity <- SDWIS_Struggling %>%
+  group_by(SystemName, IS_HEALTH_BASED_IND) %>%
+  summarize(Severity_Index = sum(Severity_Index)) %>%
+  ## add system_type column corresponsing to struggling
+  mutate(System_Group = "Struggling")
+
+## SDWIS Severity
+SDWIS_Severity <- SDWIS_viol_clean %>%
+  group_by(PWSID) %>%
+  summarize(Severity_Index = sum(Severity_Index)) %>%
+  ## add system_group corresponding to PA
+  mutate(System_Group = "PA")
+
+## Combined Severity with System_Group
+Severity_Group <- bind_rows(Struggling_Severity, SDWIS_Severity)
 
 ## Total Violations by type
 SDWIS_Type <- SDWIS_shrinking %>%
@@ -92,12 +144,18 @@ SDWIS_Annual <- SDWIS_shrinking %>%
 ## Annual Health Based Violations
 SDWIS_Annual_Health <- SDWIS_shrinking %>%
   filter(IS_HEALTH_BASED_IND == "Y" | IS_MAJOR_VIOL_IND == "Y")
-
 ```
+
 
 ## Total Violations
 
 ```{r}
+## Violations by System and Enforcement Type
+SDWIS_Enforcement_plot <- ggplot(SDWIS_shrinking,
+                                 aes(x = SystemName, fill = ENFORCEMENT_TYPE_CODE)) +
+  geom_bar()
+ggplotly(SDWIS_Enforcement_plot)
+
 ## Category Code
 SDWIS_Type_plot <- ggplot(SDWIS_Type, aes(x = SystemName, y = count, fill = CATEGORY_CODE)) +
   geom_col()
@@ -142,5 +200,47 @@ Major_Violations_plot <- ggplot(SDWIS_Shrinking_Major) +
   geom_bar(aes(x = SystemName)) +
   labs(title = "Major Violations")
 ggplotly(Major_Violations_plot)
+```
+
+## Severity Index Plots
+
+```{r}
+Struggling_Severity_plot <- ggplot(Struggling_Severity,
+                                  aes(x = SystemName, y = Severity_Index,
+                                      fill = IS_HEALTH_BASED_IND)) +
+  geom_col() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        axis.title.x = element_blank()) +
+  labs(y = "Severity Index") +
+  scale_fill_discrete(name = "Violation Type",
+                      labels = c("Major Monitoring\nReporting", "Health Based")) +
+  ## Horizontal line corresponding to the median severity index for PA
+  geom_hline(yintercept = median(SDWIS_Severity$Severity_Index),
+             linetype = "dashed", color = "red", size = 1) +
+  ## Horizontal line corresponding to 75th percentile of PA Severity Index
+  geom_hline(yintercept = quantile(SDWIS_Severity$Severity_Index, probs = 0.75),
+             linetype = "dashed", color = "red", size = 1)
+Struggling_Severity_plot
+
+Severity_Distribution <- ggplot(Severity_Group, aes(x = System_Group, y = Severity_Index)) +
+  geom_boxplot() +
+  coord_cartesian(ylim = c(0, 200)) +
+  labs(y = "Severity Index") +
+  theme(axis.title.x = element_blank())
+Severity_Distribution
+```
+
+There is no apparent significant difference in total severity index between the struggling cities we have identified and all systems in Pennsylvania. If anything, the many outliers in Pennsylvania would raise the mean to be higher than that for the struggling cities. The struggling cities with the greatest
+
+## Write Water Quality Summary Table
+
+```{r}
+SDWIS_Violation_Summary <- SDWIS_Struggling %>%
+  group_by(PWSID) %>%
+  summarize(SystemName = first(SystemName), Violation_Severity_Index = sum(Severity_Index))
+
+## write to file
+write.csv(SDWIS_Violation_Summary, "./DATA/PROCESSED/SDWIS_Violation_Summary.csv",
+          row.names = F)
 ```
 
