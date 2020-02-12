@@ -1,0 +1,101 @@
+---
+title: "Water System Health Summary"
+author: "Walker Grimshaw"
+date: "2/12/2020"
+output: pdf_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(tidyverse)
+library(readxl)
+
+Affordability <- read_excel("./DATA/PROCESSED/Affordability.xlsx")
+SDWIS_Violations <- read.csv("./DATA/PROCESSED/SDWIS_Violation_Summary.csv")
+#Legislation <-
+Pennvest <- read_excel("./DATA/RAW/PA_Pennvest_Loans_and_Grants.xlsx",
+                       na = c("NA", "N/A"))
+
+## Bond Money
+## create list of bond data file names
+bond_list <- list.files("./DATA/RAW/bond_data")
+# The names of the dataframes will be the 14th character to the period, or -5th character
+bond_data <- lapply(paste("./DATA/RAW/bond_data", bond_list, sep = "/"),
+                     read_excel, sheet = "basicInfo")
+
+Falls <- bond_data[[1]]
+Chester <- bond_data[[2]]
+NorthPenn <- bond_data[[3]]
+Pottstown <- bond_data[[4]]
+Hazleton <- bond_data[[5]]
+ReadingArea <- bond_data[[6]]
+Schuylkill <- bond_data[[7]]
+Altoona <- bond_data[[8]]
+Johnstown <- bond_data[[9]]
+Williamsport <- bond_data[[10]]
+Lewistown <- bond_data[[11]]
+Pittsburgh <- bond_data[[12]]
+Aliquippa <- bond_data[[13]]
+Charleroi <- bond_data[[14]]
+Dubois <- bond_data[[15]]
+StMarys <- bond_data[[16]]
+Carlisle <- bond_data[[17]]
+
+```
+
+## Combine and summarize bond data
+
+```{r}
+## intialize bond summary dataframe
+Bond_Summary <- data.frame(PWSID = character(), Bonds = numeric())
+
+for (i in 1:length(bond_data)) {
+  ## create temporary bond dataframe
+  temp_bond <- bond_data[[i]] %>%
+    filter(grepl("water|both", WaterSewer, ignore.case = T),
+           bondAmount != "NA") %>%
+    mutate(bondAmount = as.numeric(bondAmount)) %>%
+    ## summarize
+    group_by(PWSID) %>%
+    summarize(Bonds = sum(bondAmount), name = first(name))
+  Bond_Summary <- bind_rows(Bond_Summary, temp_bond)
+  print(Bond_Summary)
+}
+
+## Combine two hazleton systems into one, but neither of their PWSIDs match 
+
+```
+
+
+## Summarize Pennvest Data
+
+```{r}
+Pennvest_Summary <- Pennvest %>%
+  mutate(Pennvest_Loan_Amount = as.numeric(Pennvest_Loan_Amount),
+         Pennvest_Grant_Amount = as.numeric(Pennvest_Grant_Amount)) %>%
+  filter(grepl("drinking", ProjectType, ignore.case = T)) %>%
+  group_by(PWSID) %>%
+  summarize(Pennvest_Loans = sum(Pennvest_Loan_Amount, rm.na = T),
+            Pennvest_Grants = sum(Pennvest_Grant_Amount, rm.na = T))
+```
+
+
+## Joins
+
+```{r cars}
+System_Health <- SDWIS_Violations %>%
+  left_join(Affordability, by = "PWSID") %>%
+  select(PWSID:Violation_Severity_Index, HBI:Customer_Assistance_Program) %>%
+  left_join(Pennvest_Summary, by = "PWSID")
+```
+
+## Write File
+
+```{r , echo=FALSE}
+write.csv(System_Health, "./DATA/PROCESSED/System_Health_Summary.csv",
+          row.names = F)
+```
+
