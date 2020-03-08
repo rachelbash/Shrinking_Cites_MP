@@ -104,7 +104,12 @@ Struggling_Severity <- SDWIS_Struggling %>%
   group_by(SystemName, IS_HEALTH_BASED_IND) %>%
   summarize(Severity_Index = sum(Severity_Index)) %>%
   ## add system_type column corresponsing to struggling
-  mutate(System_Group = "Struggling")
+  mutate(System_Group = "Struggling",
+         ## add secondary system group column for focus cities
+         ## health based index for focus cities and "struggling" for others
+         System_Group_2 = case_when(
+           grepl("ALTOONA|CHESTER|READING|JOHNSTOWN", SystemName) ~ IS_HEALTH_BASED_IND,
+           TRUE ~ factor(0)))
 
 ## SDWIS Severity
 SDWIS_Severity <- SDWIS_viol_clean %>%
@@ -207,10 +212,13 @@ ggplotly(Major_Violations_plot)
 ```{r}
 Struggling_Severity_plot <- ggplot(Struggling_Severity,
                                   aes(x = SystemName, y = Severity_Index,
-                                      fill = IS_HEALTH_BASED_IND)) +
+                                      fill = System_Group_2)) +
   geom_col() +
-  theme(axis.text.x = element_text(angle = 45, hjust = 1),
-        axis.title.x = element_blank()) +
+  ## remove x axis labels and names
+  theme(axis.text.x = element_blank(), #element_text(angle = 45, hjust = 1),
+        axis.title.x = element_blank(),
+        legend.position = "top",
+        axis.ticks.x = element_blank()) +
   labs(y = "Severity Index") +
   scale_fill_discrete(name = "Violation Type",
                       labels = c("Major Monitoring\nReporting", "Health Based")) +
