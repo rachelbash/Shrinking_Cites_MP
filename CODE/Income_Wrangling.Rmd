@@ -1,0 +1,343 @@
+---
+title: "Interconnections Data Wrangling"
+author: "Walker Grimshaw"
+date: "12/9/2019"
+output: pdf_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(sf)
+```
+
+# Read in Data
+
+```{r}
+# ## Read in PA Facility Data to make interconnections database
+# PA_facilities <- read.csv("../Data/PROCESSED/PA_facilities.csv", header = T)
+# 
+# ## Read in census age and income data
+# PA_Age_RAW <-
+#   read.csv("../Data/Raw/PA_Age_Sex_ACS_2017/ACS_17_5YR_B01001_with_ann.csv",
+#            stringsAsFactors = F)
+
+## Read in income data
+PA_Income_RAW <-
+  read.csv("./Data/Raw/PA_Household_Income_ACS_2017/ACS_17_5YR_B19001_with_ann.csv",
+           stringsAsFactors = F)
+
+## folder filepath
+Income_Folder <- "./DATA/RAW/PA_Household_Income_1990-2010"
+
+
+```
+
+# Wrangling Data
+
+## Interconnections Data
+
+```{r}
+## PA facilities data has buyer and seller PWSIDs, so use those to find 
+## interconnections
+## PWSID is buyer PWSID, SELLER_PWSID is Seller PWSID
+## summarize by pwsid and seller pwsid
+
+PA_Interconnections_PURCHASE <- PA_facilities %>%
+  ## remove PA from beginning of PWSIDs
+  mutate(PWSID = as.numeric(gsub("PA", "", PWSID)),
+         SELLER_PWSID = as.numeric(gsub("PA", "", SELLER_PWSID))) %>%
+  select(PWSID, SELLER_PWSID) %>%
+  group_by(PWSID, SELLER_PWSID) %>%
+  summarize_all(first) %>%
+  drop_na(SELLER_PWSID) %>%
+  ## add column indicating that the primary pws is the buyer
+  mutate(DIRECTION = "Purchaser") %>%
+  rename(SECONDARY_PWSID = SELLER_PWSID)
+
+## create complementary seller interconnections dataframe
+PA_Interconnections_SELL <- PA_facilities %>%
+  ## remove PA from beginning of PWSIDs
+  mutate(PWSID = as.numeric(gsub("PA", "", PWSID)),
+         SELLER_PWSID = as.numeric(gsub("PA", "", SELLER_PWSID))) %>%
+  select(PWSID, SELLER_PWSID) %>%
+  rename(SECONDARY_PWSID = PWSID, PWSID = SELLER_PWSID) %>%
+  drop_na(PWSID) %>%
+  distinct() %>%
+  mutate(DIRECTION = "Seller")
+
+## Create dataframe that is just all PWSIDs in both columns
+PWSID_double <- PA_CWS %>%
+  mutate(SECONDARY_PWSID = PWSID) %>%
+  select(PWSID, SECONDARY_PWSID)
+
+## dataframe of water systems with bidirectional interconnections
+Interconnections_both <-PA_Interconnections_PURCHASE %>%
+  bind_rows(PA_Interconnections_SELL) %>%
+  group_by(PWSID, SECONDARY_PWSID) %>%
+  filter(n()>1) %>%
+  transmute(DIRECTION = "Both")
+
+## row_bind Purchase and Sell dataframes
+PA_Interconnections <- PA_Interconnections_PURCHASE %>%
+  bind_rows(PA_Interconnections_SELL) %>%
+  ## group by pwsid and secondary and filter for n() == 1
+  group_by(PWSID, SECONDARY_PWSID) %>%
+  filter(n() == 1) %>%
+  # rowbind with both dataframe
+  bind_rows(Interconnections_both) %>%
+  ## join with double PA_CWS dataframe
+  full_join(PWSID_double, by = c("PWSID" = "PWSID",
+                                 "SECONDARY_PWSID" = "SECONDARY_PWSID")) %>%
+  left_join(PA_CWS, by = c("SECONDARY_PWSID" = "PWSID")) %>%
+  rename(SECONDARY_PWS_NAME = PWS_NAME) %>%
+  left_join(PA_CWS, by = c("PWSID" = "PWSID")) %>%
+  select(PWSID, PWS_NAME, SECONDARY_PWSID, SECONDARY_PWS_NAME, DIRECTION) %>%
+  distinct()
+
+write.csv(PA_Interconnections, "../Data/PROCESSED/PA_PWSID_Connect.csv",
+          row.names = FALSE)
+```
+
+## Age Data
+
+```{r}
+## Age_Range Levels in order
+age_levels = c("AgeUnder5", "Age5to9", "Age10to14", "Age15to19", "Age20to24",
+               "Age25to29", "Age30to34","Age35to39", "Age40to44", "Age45to49",
+               "Age50to54", "Age55to59", "Age60to64", "Age65to69", "Age70to74",
+               "Age75to79", "Age80to84", "Age85andover")
+
+## remove all margin of error columns, these columns have HD02 in the name
+PA_Age <- PA_Age_RAW %>%
+  select(-contains("HD02"))
+
+## rename columns to correspond to age ranges
+## vector of new names
+newnames_age <- PA_Age[1,] %>%
+  str_replace_all("Estimate;", "") %>%
+  str_replace_all("Male: - ", "M_") %>%
+  str_replace_all("Female: - ", "F_") %>%
+  str_replace_all(":", "") %>%
+  str_replace_all(" ", "") %>%
+  str_replace_all("years", "")
+
+names(PA_Age) <- newnames_age
+## get rid of first row of PA_Age
+PA_Age <- PA_Age[-1,]
+## Write processed age file
+write.csv(PA_Age, "../Scratch/PA_Age_2017.csv", row.names = F)
+
+
+## Read and create Male Dataframe
+PA_Age_Male_Raw <- read.csv("../Scratch/PA_Age_2017.csv") %>%
+  select(Id2:Geography, M_Under5:M_85andover) 
+Malenames <- names(PA_Age_Male_Raw) %>%
+  str_replace_all("M_", "Age")
+names(PA_Age_Male_Raw) <- Malenames
+
+PA_Age_Male <- PA_Age_Male_Raw %>%
+  mutate(Age15to19 = Age15to17 + Age18and19,
+         Age20to24 = Age20 + Age21 + Age22to24,
+         Age60to64 = Age60and61 + Age62to64,
+         Age65to69 = Age65and66 + Age67to69) %>%
+  select(-Age15to17,-Age18and19,-Age20,-Age21,-Age22to24,-Age60and61,-Age62to64,
+         -Age65and66,-Age67to69) %>%
+  gather(key = "Age_Range", value = "Population", 3:20) %>%
+  rename(GEOID = Id2) %>%
+  mutate(Sex = "Male", Population = -Population) %>%
+  ## make GEOID and Age_Range into factors, setting the order of the Age_range levels
+  mutate(GEOID = factor(GEOID),
+         Age_Range = factor(Age_Range, levels = age_levels))
+
+## Read and create Female Dataframe
+PA_Age_Female_Raw <- read.csv("../Scratch/PA_Age_2017.csv") %>%
+  select(Id2:Geography, F_Under5:F_85andover) 
+Femalenames <- names(PA_Age_Female_Raw) %>%
+  str_replace_all("F_", "Age")
+names(PA_Age_Female_Raw) <- Femalenames
+
+PA_Age_Female <- PA_Age_Female_Raw %>%
+  mutate(Age15to19 = Age15to17 + Age18and19,
+         Age20to24 = Age20 + Age21 + Age22to24,
+         Age60to64 = Age60and61 + Age62to64,
+         Age65to69 = Age65and66 + Age67to69) %>%
+  select(-Age15to17,-Age18and19,-Age20,-Age21,-Age22to24,-Age60and61,-Age62to64,
+         -Age65and66,-Age67to69) %>%
+  gather(key = "Age_Range", value = "Population", 3:20) %>%
+  rename(GEOID = Id2) %>%
+  mutate(Sex = "Female") %>%
+  ## make GEOID and Age_Range into factors, setting the order of the Age_range levels
+  mutate(GEOID = factor(GEOID),
+         Age_Range = factor(Age_Range, levels = age_levels))
+
+## Combine male and female data and write to file
+PA_Age_Sex_2017 <- bind_rows(PA_Age_Male, PA_Age_Female)
+## Rename levels for plotting
+PA_Age_Sex_2017$Age_Range <- PA_Age_Sex_2017$Age_Range %>%
+  str_replace_all("Age", "") %>% str_replace_all("to", "-") %>%
+  str_replace_all("andover", "+") %>% str_replace_all("Under", "< ")
+
+write.csv(PA_Age_Sex_2017, "../Data/Processed/PA_Age_Sex_2017.csv", row.names = F)
+```
+
+## Income Data
+
+```{r}
+## ordered income levels for plotting
+income_levels <- c("Less_than_USD10000", "USD10to20", "USD20to30", "USD30to40",
+                   "USD40to50", "USD50000_to_USD59999", "USD60000_to_USD74999",
+                   "USD75000_to_USD99999", "USD100000_to_USD124999",
+                   "USD125000_to_USD149999", "USD150000_to_USD199999",
+                   "USD200000_or_more")
+
+## remove all margin of error columns, these columns have HD02 in the name
+PA_Income <- PA_Income_RAW %>%
+  select(-contains("HD02"))
+
+## rename columns to correspond to income ranges
+## vector of new names
+newnames_income <- PA_Income[1,] %>%
+  str_replace_all("Estimate; Total: - ", "") %>%
+  str_replace_all("\\$", "USD") %>%
+  str_replace_all(" ", "_") %>%
+  str_replace_all(";", "") %>%
+  str_replace_all(",", "")
+
+names(PA_Income) <- newnames_income
+## get rid of first row of PA_Age
+PA_Income <- PA_Income[-1,]
+## Write processed income file
+write.csv(PA_Income, "../Scratch/PA_Income_2017.csv", row.names = F)
+
+## Read in processed income csv
+PA_Income_Processed <- read.csv("../Scratch/PA_Income_2017.csv") %>%
+  mutate(USD10to20 = USD10000_to_USD14999 + USD15000_to_USD19999,
+         USD20to30 = USD20000_to_USD24999 + USD25000_to_USD29999,
+         USD30to40 = USD30000_to_USD34999 + USD35000_to_USD39999,
+         USD40to50 = USD40000_to_USD44999 + USD45000_to_USD49999) %>%
+  select(-Id, -Estimate_Total., -USD10000_to_USD14999, -USD15000_to_USD19999,
+         -USD20000_to_USD24999, -USD25000_to_USD29999,
+         -USD30000_to_USD34999, -USD35000_to_USD39999,
+         -USD40000_to_USD44999, -USD45000_to_USD49999) %>%
+  gather(key = "Income_Range", value = "Households", 3:14) %>%
+  rename(GEOID = Id2) %>%
+  mutate(GEOID = factor(GEOID))
+
+PA_Income_Processed$Income_Range <- PA_Income_Processed$Income_Range %>%
+  str_replace_all("Less_than_USD10000", "< 10") %>%
+  str_replace_all("USD100000_to_USD124999", "100-125") %>%
+  str_replace_all("USD125000_to_USD149999", "125-150") %>% 
+  str_replace_all("USD150000_to_USD199999", "150-200") %>%
+  str_replace_all("USD200000_or_more", "> 200") %>%
+  str_replace_all("USD50000_to_USD59999", "50-60") %>%
+  str_replace_all("USD60000_to_USD74999", "60-75") %>%
+  str_replace_all("USD75000_to_USD99999", "75-100") %>%
+  str_replace_all("USD", "") %>% str_replace_all("to", "-")
+ 
+## write wrangled income data to file
+write.csv(PA_Income_Processed, "../Data/Processed/PA_Income_2017_Long.csv",
+          row.names = F)
+```
+
+## 1990 Income Data
+
+```{r}
+## Read in Income data
+PA_Income_1990 <- read.csv(paste(Income_Folder, "nhgis0002_ds123_1990_blck_grp.csv",
+                                 sep = "/"),
+                           header = T, stringsAsFactors = F) %>%
+  ## select only income and GEOID related columns
+  select(GISJOIN, E4T001:E4T025)
+  
+
+## Income Level Names
+income_levels_1990 <- c("< 5", "5-10", "10-12.5", "12.5-15", "15-17.5", "17.5-20", "20-22.5",
+                        "22.5-25", "25-27.5", "27.5-30", "30-32.5", "32.5-35", "35-37.5",
+                        "37.5-40", "40-42.5", "42.5-45", "45-47.5", "47.5-50", "50-55",
+                        "55-60", "60-75", "75-100", "100-125", "125-150", "> 150")
+
+## Rename columns
+names(PA_Income_1990) <- c("GISJOIN", income_levels_1990)
+
+## Remove first row of file 
+PA_Income_1990_long <- PA_Income_1990[-1,] %>%
+  ## create GEIOD column that is just numeric part of GISJOIN
+  mutate(GEOID = gsub("G", "", GISJOIN)) %>%
+  gather(key = "Income_Range", value = "Households", 2:26) %>%
+  ## remove GISJOIN column
+  select(-GISJOIN)
+
+## Write to file
+write.csv(PA_Income_1990_long, "./Data/Processed/PA_Income_1990_Long.csv",
+          row.names = F)
+
+```
+
+## 2000 Income Data
+
+```{r}
+## Read in Income data
+PA_Income_2000 <- read.csv(paste(Income_Folder, "nhgis0002_ds152_2000_blck_grp.csv",
+                                 sep = "/"),
+                           header = T, stringsAsFactors = F) %>%
+  ## select only income and GEOID related columns
+  select(GISJOIN, HF5001:HF5016)
+  
+
+## Income Level Names
+income_levels_2000 <- c("< 10", "10-15", "15-20", "20-25", "25-30", "30-35", "35-40",
+                        "40-45", "45-50", "50-60", "60-75", "75-100", "100-125", "125-150",
+                        "150-200", "> 200")
+
+## Rename columns
+names(PA_Income_2000) <- c("GISJOIN", income_levels_2000)
+
+## Remove first row of file 
+PA_Income_2000_long <- PA_Income_2000[-1,] %>%
+  ## create GEIOD column that is just numeric part of GISJOIN
+  mutate(GEOID = gsub("G", "", GISJOIN)) %>%
+  gather(key = "Income_Range", value = "Households", 2:17) %>%
+  ## remove GISJOIN column
+  select(-GISJOIN)
+
+## Write to file
+write.csv(PA_Income_2000_long, "./Data/Processed/PA_Income_2000_Long.csv",
+          row.names = F)
+
+```
+
+## 2010 Income Data
+
+```{r}
+## Read in Income data
+PA_Income_2010 <- read.csv(paste(Income_Folder, "nhgis0002_ds176_20105_2010_blck_grp.csv",
+                                 sep = "/"),
+                           header = T, stringsAsFactors = F) %>%
+  ## select only income and GEOID related columns
+  select(GISJOIN, JOHE002:JOHE017)
+  
+
+## Income Level Names
+income_levels_2010 <- c("< 10", "10-15", "15-20", "20-25", "25-30", "30-35", "35-40",
+                        "40-45", "45-50", "50-60", "60-75", "75-100", "100-125", "125-150",
+                        "150-200", "> 200")
+
+## Rename columns
+names(PA_Income_2010) <- c("GISJOIN", income_levels_2010)
+
+## Remove first row of file 
+PA_Income_2010_long <- PA_Income_2010[-1,] %>%
+  ## create GEIOD column that is just numeric part of GISJOIN
+  mutate(GEOID = gsub("G", "", GISJOIN)) %>%
+  gather(key = "Income_Range", value = "Households", 2:17) %>%
+  ## remove GISJOIN column
+  select(-GISJOIN)
+
+## Write to file
+write.csv(PA_Income_2010_long, "./Data/Processed/PA_Income_2010_Long.csv",
+          row.names = F)
+
+```
