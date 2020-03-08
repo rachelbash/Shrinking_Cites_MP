@@ -15,6 +15,8 @@ library(readxl)
 library(sf)
 library(cowplot)
 
+theme_set(theme_gray())
+
 ## create list of bond data file names
 bond_list <- list.files("./DATA/RAW/bond_data")
 # The names of the dataframes will be the 14th character to the period, or -5th character
@@ -28,7 +30,9 @@ Pottstown <- rates_data[[4]]
 Hazleton <- rates_data[[5]]
 ReadingArea <- rates_data[[6]]
 Schuylkill <- rates_data[[7]]
-Altoona <- rates_data[[8]]
+#Altoona <- rates_data[[8]]
+Altoona <- read_excel(paste("./DATA/RAW/bond_data", bond_list[8], sep = "/"),
+                      sheet = "rates", na = "NA")
 Johnstown <- rates_data[[9]]
 Williamsport <- rates_data[[10]]
 Lewistown <- rates_data[[11]]
@@ -39,57 +43,113 @@ Dubois <- rates_data[[15]]
 StMarys <- rates_data[[16]]
 Carlisle <- rates_data[[17]]
 
-# ## Read in raw rates worksheets
-# Schuylkill_rates <- read_excel("./Data/Raw/bond_data/os_PA3540038_Schuylkill.xlsx",
-#                                sheet = "rates")
-# Aliquippa_rates <- read_excel("./Data/Raw/bond_data/os_PA5040006_Aliquippa.xlsx",
-#                               sheet = "rates")
-# ## Johnstown's rates formatted differently than the others after 1998
-# Johnstown_rates <- read_excel("./Data/Raw/bond_data/os_PA4110034_Johnstown.xlsx",
-#                               sheet = "rates")
-
 
 ## load Public Water System shapefile
 PWS_PA <- 
   st_read("Data/Raw/PublicWaterSupply2019_04/PublicWaterSupply2019_04.shp") %>%
   st_transform(6346)
 
-## Load 2017 Block Groups Shapefile
-PA_BG <- st_read("Data/Raw/tl_2017_42_bg/tl_2017_42_bg.shp") %>%
+## Federal Poverty Lines over time
+FPL <- read_excel("./Data/Raw/Federal_Poverty_Guidelines.xlsx")
+
+```
+
+## Income Levels
+
+```{r}
+## factors for income levels for the different years of data
+income_levels_2017 <- c("< 10", "10-20", "20-30", "30-40", "40-50", "50-60", "60-75",
+                   "75-100", "100-125", "125-150", "150-200", "> 200")
+income_levels_1990 <- c("< 5", "5-10", "10-12.5", "12.5-15", "15-17.5", "17.5-20", "20-22.5",
+                        "22.5-25", "25-27.5", "27.5-30", "30-32.5", "32.5-35", "35-37.5",
+                        "37.5-40", "40-42.5", "42.5-45", "45-47.5", "47.5-50", "50-55",
+                        "55-60", "60-75", "75-100", "100-125", "125-150", "> 150")
+income_levels_2000 <- c("< 10", "10-15", "15-20", "20-25", "25-30", "30-35", "35-40",
+                        "40-45", "45-50", "50-60", "60-75", "75-100", "100-125", "125-150",
+                        "150-200", "> 200")
+income_levels_2010 <- income_levels_2000
+
+## Create income bracket cutoffs in a dataframe form that can be combined
+## with the income summary data
+Income_Low_1990 <- data.frame("Income_Low" = c(0, 5000, 10000, 12500, 15000, 17500,
+                                               20000, 22500, 25000, 27500, 30000,
+                                               32500, 35000, 37500, 40000, 42500,
+                                               45000, 47500, 50000, 55000, 60000,
+                                               75000, 100000, 125000, 150000))
+Income_High_1990 <- data.frame("Income_High" = c(5000, 10000, 12500, 15000, 17500,
+                                               20000, 22500, 25000, 27500, 30000,
+                                               32500, 35000, 37500, 40000, 42500,
+                                               45000, 47500, 50000, 55000, 60000,
+                                               75000, 100000, 125000, 150000, 1e9))
+Income_Low_2000 <- data.frame("Income_Low" = c(0, 10000, 15000, 20000, 25000, 30000,
+                                               35000, 40000, 45000, 50000, 60000,
+                                               75000, 100000, 125000, 150000, 200000))
+Income_High_2000 <- data.frame("Income_High" = c(10000, 15000, 20000, 25000, 30000,
+                                               35000, 40000, 45000, 50000, 60000,
+                                               75000, 100000, 125000, 150000, 200000, 1e9))
+Income_Low_2010 <- Income_Low_2000
+Income_High_2010 <- Income_High_2000
+
+Income_Low_2017 <- data.frame("Income_Low" = c(0, 10000, 20000, 30000, 40000, 50000, 60000,
+                75000, 100000, 125000, 150000, 200000))
+Income_High_2017 <- data.frame("Income_High" = c(10000, 20000, 30000, 40000, 50000, 60000,
+                 75000, 100000, 125000, 150000, 200000, 1e9))
+```
+
+## Inputs
+```{r}
+## Select income year
+Income_Year <- as.character(1990)
+## Select Public Water System
+PWS <- ReadingArea
+
+#----- Use this section to select which year to use for income statistics ------#
+
+# ## Load 2017 Block Groups Shapefile
+# PA_BG <- st_read("Data/Raw/tl_2017_42_bg/tl_2017_42_bg.shp") %>%
+#   st_transform(6346)
+
+## Block Group folder
+BG_folder <- "Data/Raw/PA_Blockgroup_TigerLines_1990-2010"
+
+## Load 1990 Block Groups shapefile
+PA_BG <- st_read(paste(BG_folder,
+                       "nhgis0003_shapefile_tl2000_420_blck_grp_1990/PA_blck_grp_1990.shp",
+                       sep = "/")) %>%
+  ## project to NAD83(2011) / UTM zone 17N, epsg = 6346
   st_transform(6346)
 
+# ## Load 2000 Block Groups shapefile
+# PA_BG <- st_read(paste(BG_folder,
+#                        "nhgis0003_shapefile_tl2000_420_blck_grp_2000/PA_blck_grp_2000.shp",
+#                        sep = "/")) %>%
+#   ## project to NAD83(2011) / UTM zone 17N, epsg = 6346
+#   st_transform(6346)
 
-## Read Processed Income csv
-income_levels <- c("< 10", "10-20", "20-30", "30-40", "40-50", "50-60", "60-75",
-                   "75-100", "100-125", "125-150", "150-200", "> 200")
-PA_Income <- read.csv("Data/Processed/PA_Income_2017_Long.csv") %>%
+# ## Load 2010 Block Groups shapefile
+# PA_BG <- st_read(paste(BG_folder,
+#                        "nhgis0003_shapefile_tl2010_420_blck_grp_2010/PA_blck_grp_2010.shp",
+#                        sep = "/")) %>%
+#   ## project to NAD83(2011) / UTM zone 17N, epsg = 6346
+#   st_transform(6346)
+
+
+## Income from which year
+Income_Low <- Income_Low_1990
+Income_High <- Income_High_1990
+income_levels <- income_levels_1990
+
+## Read Processed Income csv for year of interest
+PA_Income <- read.csv(paste("Data/Processed/PA_Income_", Income_Year, "_Long.csv",
+                            sep = "")) %>%
   mutate(GEOID = factor(GEOID),
          Income_Range = factor(Income_Range, levels = income_levels))
 
 ```
 
-## Inputs
-```{r}
-## Select Public Water System
-PWS <- Carlisle
-
-## Create income bracket cutoffs in a dataframe form that can be combined
-## with the income summary data
-Income_Low <- data.frame("Income_Low" = c(0, 10000, 20000, 30000, 40000, 50000, 60000,
-                75000, 100000, 125000, 150000, 200000))
-Income_High <- data.frame("Income_High" = c(10000, 20000, 30000, 40000, 50000, 60000,
-                 75000, 100000, 125000, 150000, 200000, 1e9))
-
-## Average household size for each utility
-#Schuylkill_HH <- 
-  
-## Use 50 gallons per person per day to estimate "basic use"
-## Maybe calculate average residential use for each utility to see actual use
-```
-
 ## Lowest Quintile Income
 
-```{r}
+```{r LQI}
 ## Filter primary system from PWS shapefile
 ## There is an error with the Hazleton PWSID, so search for 2408001
 ## Dubois has no rates information, so search manually for 6170016
@@ -106,12 +166,32 @@ BG_Primary_Mask <- st_intersects(PA_BG, PWS_Primary, sparse = F)
 BG_Primary <- PA_BG[BG_Primary_Mask,]
 
 ## filter Income data for block groups with GEOID %in% BG_Primary$GEOID
-PA_Income_Primary <- PA_Income %>%
-  filter(GEOID %in% BG_Primary$GEOID) %>%
-  group_by(Income_Range) %>%
-  summarize(HH_Sum = sum(Households)) %>%
-  bind_cols(Income_Low, Income_High) %>%
-  mutate(cumsum = cumsum(HH_Sum))
+if(Income_Year == "2017") {
+  PA_Income_Primary <- PA_Income %>%
+    filter(GEOID %in% BG_Primary$GEOID) %>%
+    group_by(Income_Range) %>%
+    summarize(HH_Sum = sum(Households)) %>%
+    bind_cols(Income_Low, Income_High) %>%
+    mutate(cumsum = cumsum(HH_Sum))
+  } else if (Income_Year == "2010") {
+    ## remove "G" from GISJOIN column for searching
+    BG_Primary$GISJOIN <- gsub("G", "", BG_Primary$GISJOIN)
+    ## use GEOID10 column for year 2010
+    PA_Income_Primary <- PA_Income %>%
+      filter(GEOID %in% BG_Primary$GISJOIN) %>%
+      group_by(Income_Range) %>%
+      summarize(HH_Sum = sum(Households)) %>%
+      bind_cols(Income_Low, Income_High) %>%
+      mutate(cumsum = cumsum(HH_Sum))
+    } else {
+      ## otherwise use GISJOIN column instead
+      PA_Income_Primary <- PA_Income %>%
+        filter(GEOID %in% BG_Primary$GISJOIN2) %>%
+        group_by(Income_Range) %>%
+        summarize(HH_Sum = sum(Households)) %>%
+        bind_cols(Income_Low, Income_High) %>%
+        mutate(cumsum = cumsum(HH_Sum))       
+}
   
 ## Lowest Quintile Income
 LQI_Percentile <- 0.2
@@ -124,10 +204,12 @@ LQI_cumsum_Index <- detect_index(PA_Income_Primary$cumsum, function(x) x > LQI_H
 
 ## calculate the 20th percentile income
 LQI <- approx(x = c(PA_Income_Primary$cumsum[LQI_cumsum_Index-1],
-             PA_Income_Primary$cumsum[LQI_cumsum_Index]),
-       y = c(PA_Income_Primary$Income_Low[LQI_cumsum_Index],
-             PA_Income_Primary$Income_High[LQI_cumsum_Index]),
-       xout = LQI_HH_Index)$y
+                    PA_Income_Primary$cumsum[LQI_cumsum_Index]),
+             y = c(PA_Income_Primary$Income_Low[LQI_cumsum_Index],
+                   PA_Income_Primary$Income_High[LQI_cumsum_Index]),
+             xout = LQI_HH_Index)$y
+
+LQI
 
 ```
 
@@ -159,10 +241,10 @@ MeterSize_char <- "5/8"
 
 ## Poverty Prevalence Indicator
 
-```{r}
+```{r PPI}
 # Percent of community households below 200% FPL
-FPL_2017 <- c(12060, 16240, 20420, 24600, 28780, 32960, 37140, 41320)
-FPL200_PWS <- 2*FPL_2017[HH_size]
+FPL_Year <- FPL %>% filter(Year == as.numeric(Income_Year))
+FPL200_PWS <- 2*(FPL_Year$FPL_One_Person + (HH_size-1)*FPL_Year$Additional_Person)
 
 ## Search income statistics for first Income_High > FPL200_PWS
 Income_Bracket_Index <- detect_index(PA_Income_Primary$Income_High, function(x) x > FPL200_PWS)
@@ -175,6 +257,7 @@ PPI_Index <- detect_index(Income_bracket$y, function(x) x > FPL200_PWS)
 ## Add PPI_Index to the cumulative sum of the row before Income_Bracket_Index
 Total_HH_number <- sum(PA_Income_Primary$HH_Sum)
 PPI <- (PPI_Index + PA_Income_Primary$cumsum[Income_Bracket_Index-1])/Total_HH_number*100
+PPI
 ```
 
 ## Price of Basic Service
@@ -365,6 +448,197 @@ price <- function(PWS, Volume_gal_mon) {
 HBI <- as.numeric(summary_cost[4,"annual_cost"]/LQI *100) ## percent
 ```
 
+# Rates Over Time
+
+## Johnstown
+
+```{r}
+#Volume_gal_mon <- 10000 # gal per month
+
+## Price of basic service
+Johnstown_rates <- Johnstown %>%
+  filter(grepl("water", WaterSewer, ignore.case = T),
+         !grepl("fire|hydrant|resale", charges, ignore.case = T)) %>% 
+  group_by(yearSet) %>%
+  filter(rateYear == first(rateYear)) %>%
+  ## group by class to average pumping and gravity customers
+  group_by(yearSet, class, costUnit) %>%
+  mutate(cost = mean(cost), otherClass = first(otherClass)) %>%
+  distinct() %>%
+  ungroup()
+
+## flat portion of rate
+Johnstown_flat <- Johnstown_rates %>%
+  filter(class == "0.625") %>%
+  group_by(yearSet) %>% 
+  select(-notes) %>%
+  mutate(timeUnit = case_when(grepl("mon", billFrequency, ignore.case = T) ~ 1,
+                              grepl("quarter", billFrequency, ignore.case = T) ~ 3),
+         class = as.numeric(class),
+         periodic_cost = cost) %>%
+  distinct()
+
+## consumption portion of rate
+Johnstown_consumption <- Johnstown_rates %>%
+  filter(grepl("consumption", charges, ignore.case = T),
+         !grepl("flat", costUnit, ignore.case = T)) %>%
+  mutate(class = as.numeric(replace(class,
+                                    grep("over|>", class, ignore.case = T),
+                                    "1000000000000")),
+         ## volumeUnit column, gal or CF
+         volumeUnit = case_when(grepl("gal", chargeType, ignore.case = T) ~ 1,
+                                grepl("CF", chargeType, ignore.case = T) ~ 0.133681),
+         timeUnit = case_when(grepl("mon", chargeType, ignore.case = T) ~ 1,
+                              grepl("quarter", chargeType, ignore.case = T) ~ 3),
+         volume = Volume_gal_mon*volumeUnit*timeUnit,
+         ## empty volume at cost column
+         volume_at_cost = NA)
+
+# initialize Johnstown_temp
+Johnstown_temp <- Johnstown_consumption[FALSE,]
+#i  = 1
+## fill in volume at cost column
+for (i in 1:length(unique(Johnstown_consumption$yearSet))) {
+  year_temp <- unique(Johnstown_consumption$yearSet)[i]
+  Johnstown_year <- filter(Johnstown_consumption, yearSet == year_temp) %>%
+    arrange(class)
+  
+  for (j in 1:nrow(Johnstown_year)) {
+    Johnstown_year$volume_at_cost[j] <- max(0, min(Johnstown_year$volume[j],
+                                             Johnstown_year$class[j],
+                                             Johnstown_year$volume[j] - Johnstown_year$class[j-1],
+                                             Johnstown_year$class[j] - Johnstown_year$class[j-1]))
+  }
+  Johnstown_temp <- bind_rows(Johnstown_temp, Johnstown_year)
+}
+  
+## Insert volume_at_cost column into consumption df
+Johnstown_consumption <- Johnstown_consumption %>%
+  arrange(yearSet, class) %>%
+  mutate(volume_at_cost = Johnstown_temp$volume_at_cost,
+         costUnit = gsub("thousand", "1000", costUnit, ignore.case = T),
+         costUnit = gsub("hundred", "100", costUnit, ignore.case = T),
+         ## extract number from costUnit column
+         costUnitMagnitude = as.numeric(regmatches(costUnit,
+                                        gregexpr("[[:digit:]]+", costUnit))),
+         ## add and calculate total_cost column
+         periodic_cost = volume_at_cost*cost/costUnitMagnitude)
+
+## Johnstown total cost
+Johnstown_cost <- bind_rows(Johnstown_consumption, Johnstown_flat) %>%
+  group_by(yearSet) %>%
+  mutate(monthly_cost = sum(periodic_cost/timeUnit))
+
+Johnstown_summary <- Johnstown_consumption %>%
+  bind_rows(Johnstown_flat) %>%
+  group_by(yearSet) %>%
+  summarize(monthly_cost = sum(periodic_cost/timeUnit)) %>%
+  mutate(inflation = first(monthly_cost)*(1.02)^(yearSet - first(yearSet)))
+
+ggplot(Johnstown_summary, aes(x = yearSet)) +
+  geom_col(aes(y = monthly_cost)) +
+  geom_line(aes(y = inflation), color = "red") +
+  labs(x = "Year Rate Structure Set",
+       y = "Monthly Cost",
+       title = "Johnstown Price of Basic Water")
+```
+
+## Altoona
+
+```{r}
+#Volume_gal_mon <- 10000 # gal per month
+
+## Price of basic service
+Altoona_rates <- Altoona %>%
+  filter(grepl("water", WaterSewer, ignore.case = T),
+         !grepl("fire|hydrant|resale", charges, ignore.case = T)) %>% 
+  group_by(yearSet) %>%
+  filter(rateYear == first(rateYear)) %>%
+  ## group by class to average pumping and gravity customers
+  #group_by(yearSet, class, costUnit) %>%
+  #mutate(cost = mean(cost), otherClass = first(otherClass)) %>%
+  #distinct() %>%
+  ungroup() %>%
+  mutate(gallonsIncluded = replace_na(gallonsIncluded, 0))
+
+## flat portion of rate
+Altoona_flat <- Altoona_rates %>%
+  filter(class == "0.625") %>%
+  group_by(yearSet) %>% 
+  select(-notes) %>%
+  mutate(timeUnit = case_when(grepl("mon", billFrequency, ignore.case = T) ~ 1,
+                              grepl("quarter", billFrequency, ignore.case = T) ~ 3),
+         class = as.numeric(class),
+         periodic_cost = cost) %>%
+  distinct()
+
+## volumetric portion
+Altoona_consumption <- Altoona_rates %>%
+  filter(grepl("consumption", charges, ignore.case = T)) %>%
+  mutate(class = as.numeric(replace(class,
+                                    grep("over|>", class, ignore.case = T),
+                                    "1000000000000")),
+         ## volumeUnit column, gal or CF
+         volumeUnit = case_when(grepl("gal", chargeType, ignore.case = T) ~ 1,
+                                grepl("CF", chargeType, ignore.case = T) ~ 0.133681),
+         timeUnit = case_when(grepl("mon", chargeType, ignore.case = T) ~ 1,
+                              grepl("mon", billFrequency, ignore.case = T) ~ 1,
+                              grepl("quarter", chargeType, ignore.case = T) ~ 3),
+         volume = Volume_gal_mon*volumeUnit*timeUnit,
+         ## empty volume at cost column
+         volume_at_cost = NA)
+
+# initialize Altoona_temp
+Altoona_temp <- Altoona_consumption[FALSE,]
+i  = 1
+## fill in volume at cost column
+for (i in 1:length(unique(Altoona_consumption$yearSet))) {
+  year_temp <- unique(Altoona_consumption$yearSet)[i]
+  Altoona_year <- filter(Altoona_consumption, yearSet == year_temp) %>%
+    arrange(class)
+  
+  for (j in 1:nrow(Altoona_year)) {
+    Altoona_year$volume_at_cost[j] <-
+      max(0, min(Altoona_year$volume[j],
+                 max(Altoona_year$class[j], Altoona_year$gallonsIncluded[j]),
+                 Altoona_year$volume[j] - max(Altoona_year$class[j-1],Altoona_year$gallonsIncluded[j-1]),
+                 Altoona_year$class[j] - max(Altoona_year$class[j-1],Altoona_year$gallonsIncluded[j-1])))
+  }
+  Altoona_temp <- bind_rows(Altoona_temp, Altoona_year)
+}
+  
+## Insert volume_at_cost column into consumption df
+Altoona_consumption <- Altoona_consumption %>%
+  arrange(yearSet, class) %>%
+  mutate(volume_at_cost = Altoona_temp$volume_at_cost,
+         costUnit = gsub("thousand", "1000", costUnit, ignore.case = T),
+         costUnit = gsub("hundred", "100", costUnit, ignore.case = T),
+         ## extract number from costUnit column
+         costUnitMagnitude = as.numeric(regmatches(costUnit,
+                                        gregexpr("[[:digit:]]+", costUnit))),
+         ## add and calculate total_cost column
+         periodic_cost = volume_at_cost*cost/costUnitMagnitude)
+
+## Altoona total cost
+Altoona_cost <- bind_rows(Altoona_consumption, Altoona_flat) %>%
+  group_by(yearSet) %>%
+  mutate(monthly_cost = sum(periodic_cost/timeUnit))
+
+Altoona_summary <- Altoona_consumption %>%
+  bind_rows(Altoona_flat) %>%
+  group_by(yearSet) %>%
+  summarize(monthly_cost = sum(periodic_cost/timeUnit)) %>%
+  mutate(inflation = first(monthly_cost)*(1.02)^(yearSet - first(yearSet)))
+
+ggplot(Altoona_summary, aes(x = yearSet)) +
+  geom_col(aes(y = monthly_cost)) +
+  geom_line(aes(y = inflation), color = "red") +
+  labs(x = "Year Rate Structure Set",
+       y = "Monthly Cost",
+       title = "Altoona Price of Basic Water")
+```
+
+
 ## Affordability Summary
 
 ```{r}
@@ -392,12 +666,12 @@ Affordability_secondary <- Affordability %>%
                                   TRUE ~ metric_value))
 
 ## colors for plot
-mycolors <- c("HBI" = "#fc8d62", "PPI_2017" = "#66c2a5")
+mycolors <- c("HBI" = "#fc8d62", "PPI_2017" = "#66c2a5", "gray" = "dark gray")
   
 ## Separate HBI and PPI graphs
 ## HBI Plot
-HBI_plot <- ggplot(Affordability,aes(x = Name, y = HBI)) +
-  geom_col(fill = mycolors["HBI"]) +
+HBI_plot <- ggplot(Affordability,aes(x = Name, y = HBI, fill = Focus_City)) +
+  geom_col() +
   ## horizontal line of burden level cutoffs
   geom_hline(yintercept = 0.035, linetype = "dashed", color = "red") +
   geom_hline(yintercept = 0.05, linetype = "dashed", color = "red") +
@@ -408,12 +682,15 @@ HBI_plot <- ggplot(Affordability,aes(x = Name, y = HBI)) +
   ## no x axis title, text slanted 45 degrees
   theme(axis.title.x = element_blank(),
         axis.text.x = element_blank(),
-        axis.ticks.x = element_blank())
+        axis.ticks.x = element_blank(),
+        legend.position = "none") +
+  scale_fill_manual(breaks = c("Y", "N"),
+                    values = c("dark gray", "#fc8d62"))
 HBI_plot
 
 ## PPI plot
-PPI_plot <- ggplot(Affordability,aes(x = Name, y = PPI_2017)) +
-  geom_col(fill = mycolors["PPI_2017"]) +
+PPI_plot <- ggplot(Affordability,aes(x = Name, y = PPI_2017, fill = Focus_City)) +
+  geom_col() +
   geom_hline(yintercept = 0.2, linetype = "dashed", color = "red") +
   geom_hline(yintercept = 0.35, linetype = "dashed", color = "red") +
   labs(y = "Poverty Prevalence Index") +
@@ -423,7 +700,10 @@ PPI_plot <- ggplot(Affordability,aes(x = Name, y = PPI_2017)) +
                      labels = c("0", "20%", "40%", "60%")) +
   ## no x axis title, text slanted 45 degrees
   theme(axis.title.x = element_blank(),
-        axis.text.x = element_text(angle = 45, hjust = 1))
+        axis.text.x = element_text(angle = 45, hjust = 1),
+        legend.position = "none") +
+  scale_fill_manual(breaks = c("Y", "N"),
+                    values = c("dark gray", "#66c2a5"))
 PPI_plot
 
 HBI_PPI_stack <- plot_grid(HBI_plot, PPI_plot, ncol = 1, align = "v", rel_heights = c(1, 1.3))
@@ -452,4 +732,58 @@ HBI_PPI_plot <- ggplot(Affordability_secondary,
 HBI_PPI_plot
 
 ```
+
+## Focus System Rate Plots
+
+```{r}
+Focus_Rates <- read_excel("./DATA/PROCESSED/Rates.xlsx") %>%
+  drop_na(Monthly_Cost) %>%
+  arrange(PWS_Name, Year) %>%
+  group_by(PWS_Name) %>%
+  mutate(inflation = first(Monthly_Cost)*(1.02)^(Year - first(Year)))
+
+All_rates_plot <- ggplot(Focus_Rates, aes(x = Year)) +
+  geom_col(aes(y = Monthly_Cost)) +
+  geom_line(aes(y = inflation), color = "red") +
+  facet_wrap(~ PWS_Name) +
+  theme(legend.position = "none") +
+  labs(y = "Monthly Cost of Basic Water")
+All_rates_plot
+
+Focus_LQI <- read_excel("./DATA/PROCESSED/Rates.xlsx") %>%
+  drop_na(LQI) %>%
+  arrange(PWS_Name, Year) %>%
+  group_by(PWS_Name) %>%
+  mutate(inflation = first(LQI)*(1.02)^(Year - first(Year))) #%>%
+  #gather(key = "Metric", value = "Metric_Value", 8:11)
+
+Altoona_LQI_plot <- ggplot(subset(Focus_LQI, PWS_Name == "Altoona"), aes(x=Year)) +
+  geom_col(aes(y = LQI)) +
+  geom_line(aes(y = FPL), color = "red") +
+  #theme(legend.position = "none") +
+  labs(y = "Dollars",
+       title = "Altoona Lowest Quintile Income")
+Altoona_LQI_plot
+
+LQI_Plot <- function(PWS) {
+  ggplot(subset(Focus_LQI, PWS_Name == PWS), aes(x=Year)) +
+    geom_col(aes(y = LQI)) +
+    geom_line(aes(y = FPL), color = "red", size = 1) +
+    #theme(legend.position = "none") +
+    labs(y = "Dollars",
+         title = paste(PWS, "Lowest Quintile Income"))
+}
+LQI_Plot("Johnstown")
+
+All_LQI_plot <- ggplot(Focus_LQI, aes(x = Year)) +
+  geom_col(aes(y = LQI)) +
+  #geom_line(aes(y = inflation), color = "red") +
+  geom_line(aes(y = FPL), color = "red") +
+  facet_wrap(~ PWS_Name) +
+  #theme(legend.position = "none") +
+  labs(y = "Annual Income (USD)")
+  
+All_LQI_plot
+```
+
 
