@@ -15,7 +15,8 @@ library(readxl)
 library(sf)
 library(cowplot)
 
-theme_set(theme_gray())
+theme_set(theme_bw(base_size = 10,
+                   ))
 
 ## create list of bond data file names
 bond_list <- list.files("./DATA/RAW/bond_data")
@@ -673,8 +674,8 @@ mycolors <- c("HBI" = "#fc8d62", "PPI_2017" = "#66c2a5", "gray" = "dark gray")
 HBI_plot <- ggplot(Affordability,aes(x = Name, y = HBI, fill = Focus_City)) +
   geom_col() +
   ## horizontal line of burden level cutoffs
-  geom_hline(yintercept = 0.035, linetype = "dashed", color = "red") +
-  geom_hline(yintercept = 0.05, linetype = "dashed", color = "red") +
+  geom_hline(yintercept = 0.035, linetype = "dashed", color = "red", size = 1) +
+  geom_hline(yintercept = 0.05, linetype = "dashed", color = "red", size = 1) +
   labs(y = "Household Burden Index") +
   ## y text as percentages instead of decimals
   scale_y_continuous(#breaks = seq(-pop_max_round(), pop_max_round(), step_size()),
@@ -691,8 +692,8 @@ HBI_plot
 ## PPI plot
 PPI_plot <- ggplot(Affordability,aes(x = Name, y = PPI_2017, fill = Focus_City)) +
   geom_col() +
-  geom_hline(yintercept = 0.2, linetype = "dashed", color = "red") +
-  geom_hline(yintercept = 0.35, linetype = "dashed", color = "red") +
+  geom_hline(yintercept = 0.2, linetype = "dashed", color = "red", size = 1) +
+  geom_hline(yintercept = 0.35, linetype = "dashed", color = "red", size = 1) +
   labs(y = "Poverty Prevalence Index") +
   coord_cartesian(ylim = c(0,0.6)) +
   ## y text as percentages instead of decimals
@@ -708,6 +709,11 @@ PPI_plot
 
 HBI_PPI_stack <- plot_grid(HBI_plot, PPI_plot, ncol = 1, align = "v", rel_heights = c(1, 1.3))
 HBI_PPI_stack
+
+## print as high quality png image
+png("./OUTPUT/HBI_PPI_Stack.png",width = 5.5, height = 6.5,units = "in", res = 300)
+HBI_PPI_stack
+dev.off()
 
 ## HBI and PPI on one graph
 HBI_PPI_plot <- ggplot(Affordability_secondary,
@@ -746,9 +752,14 @@ All_rates_plot <- ggplot(Focus_Rates, aes(x = Year)) +
   geom_col(aes(y = Monthly_Cost)) +
   geom_line(aes(y = inflation), color = "red") +
   facet_wrap(~ PWS_Name) +
-  theme(legend.position = "none") +
-  labs(y = "Monthly Cost of Basic Water")
+  theme(legend.position = "none",
+        panel.spacing.x = unit(0.9, "lines")) +
+  labs(y = "Monthly Cost of\nBasic Water (USD)")
 All_rates_plot
+
+png("./OUTPUT/All_Rates_Time.png",width = 5.5, height = 4,units = "in", res = 300)
+All_rates_plot
+dev.off()
 
 Focus_LQI <- read_excel("./DATA/PROCESSED/Rates.xlsx") %>%
   drop_na(LQI) %>%
@@ -776,14 +787,25 @@ LQI_Plot <- function(PWS) {
 LQI_Plot("Johnstown")
 
 All_LQI_plot <- ggplot(Focus_LQI, aes(x = Year)) +
-  geom_col(aes(y = LQI)) +
+  geom_col(aes(y = LQI),width = 4) +
   #geom_line(aes(y = inflation), color = "red") +
   geom_line(aes(y = FPL), color = "red") +
   facet_wrap(~ PWS_Name) +
   #theme(legend.position = "none") +
-  labs(y = "Annual Income (USD)")
+  labs(y = "Annual Income (USD)") +
+  ## add commas to large numbers on y axis
+  scale_y_continuous(labels = format(seq(0, 30000, 10000),
+                                     big.mark = ",", trim = TRUE)) +
+  ## better show that the fourth data point is at 2017 and not 2020
+  scale_x_continuous(breaks = c(1990, 2000, 2010, 2017),
+                     labels = c(1990, 2000, 2010, 2017)) +
+  theme(axis.text = element_text(size = 10))
   
 All_LQI_plot
+
+png("./OUTPUT/All_LQI_Time.png",width = 5.5, height = 4,units = "in", res = 300)
+All_LQI_plot
+dev.off()
 ```
 
 
