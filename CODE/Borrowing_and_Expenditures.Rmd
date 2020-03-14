@@ -1,0 +1,81 @@
+---
+title: "Borrowing and Expenditures"
+author: "Walker Grimshaw"
+date: "3/13/2020"
+output: pdf_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(tidyverse)
+library(readxl)
+library(sf)
+library(cowplot)
+
+theme_set(theme_bw())
+
+## create list of bond data file names
+bond_list <- list.files("./DATA/RAW/bond_data")
+# The names of the dataframes will be the 14th character to the period, or -5th character
+purpose_data <- lapply(paste("./DATA/RAW/bond_data", bond_list, sep = "/"),
+                     read_excel, sheet = "bondPurpose")
+
+# Falls <- purpose_data[[1]]
+# Chester <- purpose_data[[2]]
+# NorthPenn <- purpose_data[[3]]
+# Pottstown <- purpose_data[[4]]
+# Hazleton <- purpose_data[[5]]
+# ReadingArea <- purpose_data[[6]]
+# Schuylkill <- purpose_data[[7]]
+# Altoona <- purpose_data[[8]]
+# #Altoona <- read_excel(paste("./DATA/RAW/bond_data", bond_list[8], sep = "/"),
+# #                      sheet = "purpose", na = "NA")
+# Johnstown <- purpose_data[[9]]
+# Williamsport <- purpose_data[[10]]
+# Lewistown <- purpose_data[[11]]
+# Pittsburgh <- purpose_data[[12]]
+# Aliquippa <- purpose_data[[13]]
+# Charleroi <- purpose_data[[14]]
+# Dubois <- purpose_data[[15]]
+# StMarys <- purpose_data[[16]]
+# Carlisle <- purpose_data[[17]]
+```
+
+## Bond Purpose
+
+```{r cars}
+Capital_Expenditures <- function(PWS) {
+  ## Identify capital expenditures
+  Water_System <- PWS %>%
+    ## column for whether the purpose was a capital expenditure or construction fund
+    mutate(Capital_Expenditure = grepl("construction|capital|project", purpose, ignore.case = T) &
+             !grepl("capitalized", purpose, ignore.case = T),
+           ## column for expense on capital projects
+           Capital_amount = amount*Capital_Expenditure)
+  ## Total bond amount
+  PWS_bond <- sum(Water_System$amount)
+  ## Bonds spent on capital expenditures
+  PWS_capital <- sum(Water_System$Capital_amount)
+  ## Percent of bonds on capital expenditures
+  PWS_capital_percent <- PWS_capital/PWS_bond
+  ## create single row data frame
+  data.frame(Name = Water_System$name[1], Bond_Total = PWS_bond,
+             Capital_Total = PWS_capital, Capital_Percent = PWS_capital_percent)
+}
+Capital_Expenditures(Altoona)
+
+## calculate capital expenditures for all systems
+## intitialize data frame
+CapEx_Bonds <- data.frame(Name = character(), Bond_Total = numeric(),
+                          Capital_Total = numeric(), Capital_Percent = numeric())
+## for loop for each system
+for (i in 1:17) {
+  PWS <- purpose_data[[i]]
+  Capital_Expenditures_temp <- Capital_Expenditures(PWS)
+  CapEx_Bonds <- bind_rows(CapEx_Bonds, Capital_Expenditures_temp)
+}
+```
+
