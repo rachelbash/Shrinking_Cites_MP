@@ -15,8 +15,7 @@ library(readxl)
 library(sf)
 library(cowplot)
 
-theme_set(theme_bw(base_size = 10,
-                   ))
+theme_set(theme_bw())
 
 ## create list of bond data file names
 bond_list <- list.files("./DATA/RAW/bond_data")
